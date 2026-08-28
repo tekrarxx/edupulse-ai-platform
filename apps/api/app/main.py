@@ -8,6 +8,7 @@ from app.api.routes.ai import router as ai_router
 from app.api.routes.assessment import router as assessment_router
 from app.api.routes.auth import router as auth_router
 from app.api.routes.curriculum import router as curriculum_router
+from app.api.routes.dashboard import router as dashboard_router
 from app.api.routes.decision import router as decision_router
 from app.api.routes.health import router as health_router
 from app.api.routes.knowledge_state import router as knowledge_state_router
@@ -45,3 +46,4 @@ app.include_router(knowledge_state_router, tags=["knowledge-state"])
 app.include_router(decision_router, tags=["decisions"])
 app.include_router(retention_router, tags=["retention"])
 app.include_router(ai_router, tags=["ai"])
+app.include_router(dashboard_router, tags=["dashboard"])

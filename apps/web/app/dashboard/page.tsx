@@ -1,12 +1,16 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
+import { fetchStudentDashboard, type StudentDashboard } from "@/lib/dashboard";
+import { SkillProgressCard } from "@/components/skill-progress-card";
 
 export default function DashboardPage() {
-  const { user, status, logout } = useAuth();
+  const { user, accessToken, status, logout } = useAuth();
   const router = useRouter();
+  const [dashboard, setDashboard] = useState<StudentDashboard | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -14,22 +18,53 @@ export default function DashboardPage() {
     }
   }, [status, router]);
 
+  useEffect(() => {
+    if (status === "authenticated" && accessToken) {
+      fetchStudentDashboard(accessToken)
+        .then(setDashboard)
+        .catch(() => setError("Panonuz yüklenirken bir sorun oluştu."));
+    }
+  }, [status, accessToken]);
+
   if (status !== "authenticated" || !user) {
     return null;
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-6 p-8">
-      <h1 className="text-2xl font-semibold">Merhaba, {user.display_name}</h1>
-      <p className="text-sm text-muted">
-        Rol: {user.role} — Faz 2 (Identity/Tenant/RBAC) placeholder&apos;ı. Gerçek öğrenci panosu Faz 9&apos;da geliyor.
-      </p>
-      <button
-        onClick={() => logout().then(() => router.push("/login"))}
-        className="w-fit rounded-md border border-border px-4 py-2 text-sm"
-      >
-        Çıkış yap
-      </button>
+    <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-6 p-8">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">Merhaba, {user.display_name}</h1>
+        <button
+          onClick={() => logout().then(() => router.push("/login"))}
+          className="w-fit rounded-md border border-border px-4 py-2 text-sm"
+        >
+          Çıkış yap
+        </button>
+      </div>
+
+      {error && <p className="text-sm text-red-700">{error}</p>}
+
+      {dashboard && (
+        <>
+          <div className="flex gap-4 text-sm text-muted">
+            <span>{dashboard.strong_skill_count} güçlü konu</span>
+            <span>{dashboard.weak_skill_count} çalışılması gereken konu</span>
+            <span>{dashboard.upcoming_retention_count} yaklaşan hatırlama kontrolü</span>
+          </div>
+
+          {dashboard.skills.length === 0 ? (
+            <p className="text-sm text-muted">
+              Henüz bir konu üzerinde çalışmadın. Bir soru çözdüğünde burada ilerlemeni göreceksin.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {dashboard.skills.map((skill) => (
+                <SkillProgressCard key={skill.skill_id} skill={skill} />
+              ))}
+            </div>
+          )}
+        </>
+      )}
     </main>
   );
 }
