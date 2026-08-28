@@ -4,6 +4,7 @@ from app.models.assessment import Attempt, Question
 from app.models.audit_log import AuditLog
 from app.models.curriculum import Concept, Prerequisite, Skill, SkillFacet, Subject, Topic
 from app.models.evidence import Evidence
+from app.models.knowledge_state import KnowledgeState
 from app.models.observation import Observation
 from app.models.relationship import ParentStudentLink, TeacherStudentLink
 from app.models.tenant import Tenant
@@ -14,6 +15,7 @@ __all__ = [
     "AuditLog",
     "Concept",
     "Evidence",
+    "KnowledgeState",
     "Observation",
     "ParentStudentLink",
     "Prerequisite",
