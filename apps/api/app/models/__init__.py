@@ -3,6 +3,7 @@ Alembic autogeneration and the test schema bootstrap both rely on."""
 from app.models.assessment import Attempt, Question
 from app.models.audit_log import AuditLog
 from app.models.curriculum import Concept, Prerequisite, Skill, SkillFacet, Subject, Topic
+from app.models.decision import Decision
 from app.models.evidence import Evidence
 from app.models.knowledge_state import KnowledgeState
 from app.models.observation import Observation
@@ -14,6 +15,7 @@ __all__ = [
     "Attempt",
     "AuditLog",
     "Concept",
+    "Decision",
     "Evidence",
     "KnowledgeState",
     "Observation",

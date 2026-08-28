@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, String
+from sqlalchemy import Boolean, DateTime, Enum, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -31,4 +31,9 @@ class Tenant(Base):
         Enum(TenantType, name="tenant_type", native_enum=False, values_callable=lambda enum_cls: [e.value for e in enum_cls]),
         nullable=False,
     )
+    # §96 feature flag for PDE policy rollout (ADR-013 "Shadow Mode"): when
+    # true, every decision generated for this tenant is stored with
+    # is_shadow=True regardless of who requested it — a hard floor a staff
+    # caller's per-request `mode` cannot override.
+    pde_shadow_mode_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
