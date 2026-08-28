@@ -10,6 +10,7 @@ from app.api.routes.curriculum import router as curriculum_router
 from app.api.routes.decision import router as decision_router
 from app.api.routes.health import router as health_router
 from app.api.routes.knowledge_state import router as knowledge_state_router
+from app.api.routes.retention import router as retention_router
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 
@@ -41,3 +42,4 @@ app.include_router(curriculum_router, tags=["curriculum"])
 app.include_router(assessment_router, tags=["assessment"])
 app.include_router(knowledge_state_router, tags=["knowledge-state"])
 app.include_router(decision_router, tags=["decisions"])
+app.include_router(retention_router, tags=["retention"])

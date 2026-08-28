@@ -8,6 +8,7 @@ from app.models.evidence import Evidence
 from app.models.knowledge_state import KnowledgeState
 from app.models.observation import Observation
 from app.models.relationship import ParentStudentLink, TeacherStudentLink
+from app.models.retention import Hypothesis, RetentionCheckpoint
 from app.models.tenant import Tenant
 from app.models.user import User, UserSession
 
@@ -17,11 +18,13 @@ __all__ = [
     "Concept",
     "Decision",
     "Evidence",
+    "Hypothesis",
     "KnowledgeState",
     "Observation",
     "ParentStudentLink",
     "Prerequisite",
     "Question",
+    "RetentionCheckpoint",
     "Skill",
     "SkillFacet",
     "Subject",

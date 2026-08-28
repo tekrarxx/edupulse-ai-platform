@@ -59,6 +59,11 @@ class Question(Base):
     # items automatic exact-match grading can evaluate deterministically.
     correct_answer: Mapped[str | None] = mapped_column(Text, nullable=True)
     difficulty: Mapped[float] = mapped_column(Float, nullable=False, default=0.5)
+    # §29/ADR-014: an explicit transfer-variant edge. When set, this item is
+    # a deliberately surface-varied sibling of source_question_id — the
+    # relationship §29 asks for, not just a shared skill_id + TRANSFER tag.
+    source_question_id: Mapped[str | None] = uuid_fk("questions.id", nullable=True)
+    surface_variation: Mapped[str | None] = mapped_column(Text, nullable=True)
     content_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 

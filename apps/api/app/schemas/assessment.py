@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.models.assessment import AssessmentType, EvaluationMethod
 from app.models.curriculum import SkillFacetType
-from app.models.evidence import EvidenceDirectness, EvidencePolarity
+from app.models.evidence import EvidenceDirectness, EvidencePolarity, FailureMode
 from app.models.observation import ObservationEventType
 
 # Keys that would smuggle an interpreted conclusion into a supposedly raw
@@ -31,6 +31,9 @@ class QuestionCreate(BaseModel):
     prompt: str = Field(min_length=1)
     correct_answer: str | None = None
     difficulty: float = Field(default=0.5, ge=0.0, le=1.0)
+    # §29/ADR-014: an explicit transfer-variant edge.
+    source_question_id: str | None = None
+    surface_variation: str | None = None
 
 
 class QuestionOut(BaseModel):
@@ -44,6 +47,8 @@ class QuestionOut(BaseModel):
     correct_answer: str | None
     difficulty: float
     content_version: int
+    source_question_id: str | None
+    surface_variation: str | None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -56,6 +61,8 @@ class QuestionPublicOut(BaseModel):
     prompt: str
     difficulty: float
     content_version: int
+    source_question_id: str | None
+    surface_variation: str | None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -127,6 +134,14 @@ class EvidenceOut(BaseModel):
     task_validity: float
     transfer_relevance: bool
     evaluation_confidence: float
+    failure_mode: FailureMode | None
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class ClassifyFailureModeRequest(BaseModel):
+    """§31/ADR-014: TRANSFER_FAILURE/RETENTION_FAILURE are rejected here —
+    they are set automatically, never via this endpoint."""
+
+    failure_mode: FailureMode

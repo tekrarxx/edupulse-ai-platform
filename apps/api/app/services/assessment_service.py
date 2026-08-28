@@ -10,8 +10,8 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from app.models.assessment import Attempt, EvaluationMethod, Question
-from app.models.curriculum import Skill
-from app.models.evidence import Evidence, EvidenceDirectness, EvidencePolarity
+from app.models.curriculum import Skill, SkillFacetType
+from app.models.evidence import Evidence, EvidenceDirectness, EvidencePolarity, FailureMode
 from app.models.observation import Observation, ObservationEventType
 from app.schemas.assessment import ObservationCreate, QuestionCreate, SubmitAttemptRequest
 
@@ -40,15 +40,37 @@ class SubjectNotFound(AssessmentError):
     pass
 
 
+class EvidenceNotFound(AssessmentError):
+    pass
+
+
+class FailureModeAlreadyClassified(AssessmentError):
+    pass
+
+
+class StructuralFailureModeCannotBeManuallyClassified(AssessmentError):
+    pass
+
+
+_STRUCTURAL_FAILURE_MODE_BY_FACET = {
+    SkillFacetType.TRANSFER: FailureMode.TRANSFER_FAILURE,
+    SkillFacetType.RETENTION: FailureMode.RETENTION_FAILURE,
+}
+
+
 def create_question(db: Session, payload: QuestionCreate) -> Question:
     if db.get(Skill, payload.skill_id) is None:
         raise SkillNotFound()
+    if payload.source_question_id is not None and db.get(Question, payload.source_question_id) is None:
+        raise QuestionNotFound()
     question = Question(
         skill_id=payload.skill_id,
         facet_type=payload.facet_type,
         prompt=payload.prompt,
         correct_answer=payload.correct_answer,
         difficulty=payload.difficulty,
+        source_question_id=payload.source_question_id,
+        surface_variation=payload.surface_variation,
     )
     db.add(question)
     db.commit()
@@ -201,23 +223,46 @@ def _apply_evaluation(
         idempotency_key=f"{attempt.idempotency_key}:evaluated",
     )
 
-    db.add(
-        Evidence(
-            tenant_id=attempt.tenant_id,
-            student_user_id=attempt.student_user_id,
-            observation_id=observation.id,
-            skill_id=question.skill_id,
-            facet_type=question.facet_type,
-            polarity=EvidencePolarity.POSITIVE if is_correct else EvidencePolarity.NEGATIVE,
-            directness=EvidenceDirectness.DIRECT,
-            # Manual grading carries a small reliability discount relative to
-            # exact-match automatic grading, which cannot be subjectively
-            # wrong about whether the strings matched (§27).
-            reliability=1.0 if evaluation_method == EvaluationMethod.AUTOMATIC else 0.8,
-            task_validity=1.0,
-            transfer_relevance=question.facet_type.value == "transfer",
-            evaluation_confidence=evaluation_confidence,
-        )
+    # §31/ADR-014: TRANSFER_FAILURE/RETENTION_FAILURE are structural facts
+    # (already known from facet_type) and may be set automatically; every
+    # other failure mode requires an explicit human classification, never
+    # an automatic inference from a single incorrect answer.
+    failure_mode = _STRUCTURAL_FAILURE_MODE_BY_FACET.get(question.facet_type) if not is_correct else None
+
+    evidence = Evidence(
+        tenant_id=attempt.tenant_id,
+        student_user_id=attempt.student_user_id,
+        observation_id=observation.id,
+        skill_id=question.skill_id,
+        facet_type=question.facet_type,
+        polarity=EvidencePolarity.POSITIVE if is_correct else EvidencePolarity.NEGATIVE,
+        directness=EvidenceDirectness.DIRECT,
+        # Manual grading carries a small reliability discount relative to
+        # exact-match automatic grading, which cannot be subjectively
+        # wrong about whether the strings matched (§27).
+        reliability=1.0 if evaluation_method == EvaluationMethod.AUTOMATIC else 0.8,
+        task_validity=1.0,
+        transfer_relevance=question.facet_type.value == "transfer",
+        evaluation_confidence=evaluation_confidence,
+        failure_mode=failure_mode,
+    )
+    db.add(evidence)
+    db.flush()
+
+    # §30/ADR-014: schedule 14d/28d retention checkpoints the first time
+    # this (student, skill)'s APPLICATION facet reaches high_confidence.
+    # Local import to avoid a module-load-time cycle (retention_service
+    # imports assessment_service.submit_attempt for checkpoint completion).
+    from app.services import retention_service
+
+    retention_service.maybe_schedule_checkpoints(
+        db,
+        tenant_id=attempt.tenant_id,
+        student_user_id=attempt.student_user_id,
+        skill_id=question.skill_id,
+        facet_type=question.facet_type,
+        origin_evidence_id=evidence.id,
+        as_of=now,
     )
 
 
@@ -257,3 +302,30 @@ def query_evidence(db: Session, *, tenant_id: str, student_user_id: str | None) 
     if student_user_id is not None:
         query = query.filter(Evidence.student_user_id == student_user_id)
     return query.order_by(Evidence.created_at.desc()).all()
+
+
+_MANUALLY_CLASSIFIABLE_FAILURE_MODES = {
+    FailureMode.LACK_OF_KNOWLEDGE,
+    FailureMode.RETRIEVAL_FAILURE,
+    FailureMode.CARELESS_ERROR,
+    FailureMode.MISCONCEPTION,
+}
+
+
+def classify_failure_mode(db: Session, *, tenant_id: str, evidence_id: str, failure_mode: FailureMode) -> Evidence:
+    """§31/ADR-014: teacher-only classification. TRANSFER_FAILURE and
+    RETENTION_FAILURE are never accepted here — they are structural facts
+    set automatically in _apply_evaluation, not a human judgment call."""
+    if failure_mode not in _MANUALLY_CLASSIFIABLE_FAILURE_MODES:
+        raise StructuralFailureModeCannotBeManuallyClassified()
+
+    evidence = db.get(Evidence, evidence_id)
+    if evidence is None or evidence.tenant_id != tenant_id:
+        raise EvidenceNotFound()
+    if evidence.failure_mode is not None:
+        raise FailureModeAlreadyClassified()
+
+    evidence.failure_mode = failure_mode
+    db.commit()
+    db.refresh(evidence)
+    return evidence

@@ -5,12 +5,12 @@ assessment_service.evaluate_attempt, which is what guarantees every row
 traces back to a raw fact (§23 "never store an inference as if it were a
 raw observation").
 
-Failure-mode discrimination (lack of knowledge vs. retrieval failure vs.
-careless error vs. misconception vs. transfer/retention failure, §31) is
-explicitly Phase 6/P6 scope — this phase only distinguishes positive vs.
-negative polarity from Attempt.is_correct. No misconception field exists
-here yet; adding one prematurely would risk exactly the "incorrect answer
-implies misconception" mistake §31 warns against.
+Failure-mode discrimination (§31, ADR-014): `failure_mode` is nullable and
+has two distinct write paths — TRANSFER_FAILURE/RETENTION_FAILURE are set
+automatically in assessment_service (structural facts, not inferences),
+while LACK_OF_KNOWLEDGE/RETRIEVAL_FAILURE/CARELESS_ERROR/MISCONCEPTION can
+only be set via the explicit teacher-only classification endpoint — never
+automatically from a single incorrect answer, per §31's own warning.
 """
 import enum
 from datetime import datetime
@@ -41,6 +41,21 @@ class EvidenceDirectness(str, enum.Enum):
     INDIRECT = "indirect"
 
 
+class FailureMode(str, enum.Enum):
+    """§31, ADR-014. LACK_OF_KNOWLEDGE/RETRIEVAL_FAILURE/CARELESS_ERROR/
+    MISCONCEPTION require a human classification (see
+    app/services/assessment_service.py::classify_failure_mode); only
+    TRANSFER_FAILURE and RETENTION_FAILURE are ever set automatically, and
+    only for their matching facet_type."""
+
+    LACK_OF_KNOWLEDGE = "lack_of_knowledge"
+    RETRIEVAL_FAILURE = "retrieval_failure"
+    CARELESS_ERROR = "careless_error"
+    MISCONCEPTION = "misconception"
+    TRANSFER_FAILURE = "transfer_failure"
+    RETENTION_FAILURE = "retention_failure"
+
+
 class Evidence(Base):
     __tablename__ = "evidence"
 
@@ -62,4 +77,7 @@ class Evidence(Base):
     task_validity: Mapped[float] = mapped_column(Float, nullable=False)
     transfer_relevance: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     evaluation_confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    failure_mode: Mapped[FailureMode | None] = mapped_column(
+        _enum_column(FailureMode, "evidence_failure_mode"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)

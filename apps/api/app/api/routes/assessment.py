@@ -7,6 +7,7 @@ from app.models.relationship import ParentStudentLink
 from app.models.user import Role, User
 from app.schemas.assessment import (
     AttemptOut,
+    ClassifyFailureModeRequest,
     EvaluateAttemptRequest,
     EvidenceOut,
     ObservationCreate,
@@ -131,3 +132,23 @@ def query_evidence(
 
     evidence = assessment_service.query_evidence(db, tenant_id=current_user.tenant_id, student_user_id=target_student_id)
     return [EvidenceOut.model_validate(e) for e in evidence]
+
+
+@router.post("/evidence/{evidence_id}/failure-mode", response_model=EvidenceOut, dependencies=[_grader_access])
+def classify_failure_mode(
+    evidence_id: str,
+    payload: ClassifyFailureModeRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> EvidenceOut:
+    try:
+        evidence = assessment_service.classify_failure_mode(
+            db, tenant_id=current_user.tenant_id, evidence_id=evidence_id, failure_mode=payload.failure_mode
+        )
+    except assessment_service.StructuralFailureModeCannotBeManuallyClassified:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="structural_failure_mode_not_manually_classifiable")
+    except assessment_service.EvidenceNotFound:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="evidence_not_found")
+    except assessment_service.FailureModeAlreadyClassified:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="failure_mode_already_classified")
+    return EvidenceOut.model_validate(evidence)
