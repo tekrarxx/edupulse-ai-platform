@@ -177,22 +177,98 @@ merely asserted.
 
 ## Consequences
 
-- **`OllamaProvider` was never run against a live Ollama instance in this
-  implementation session.** It is real, reviewed code, but it is an
-  explicit, unverified open item — not a fake implementation (§105), but
-  not yet a proven one either. Before treating `/ai/explanations` as
-  production-ready, the user must run `docker compose up -d ollama`, pull a
-  model (e.g. `docker compose exec ollama ollama pull llama3.1:8b` or a
-  smaller model), set `OLLAMA_MODEL` accordingly, and exercise the endpoint
-  for real. Until then, only the `FakeProvider`-backed test suite has
-  verified the gateway's own logic (validation, safety, retry, accounting)
-  — never the real model integration.
+- `OllamaProvider` was not run against a live Ollama instance in the
+  session that implemented it — that gap has since been closed, see the
+  addendum below.
 - Any future AI capability should go through this same gateway/provider
   seam rather than making its own ad-hoc LLM call (§106 — no undocumented
   AI calls).
 - The two scope decisions in §6 are tracked, not permanent — see the
   memory this session already recorded about closing documented gaps over
   time.
+
+## Addendum (2026-08-29): Real Hardware Verification
+
+The user asked, in the immediately following session, whether their
+development machine can actually run Ollama, and to find a solution if not.
+Ollama was installed (`winget install Ollama.Ollama`) and genuinely
+exercised — not simulated — against this machine's real hardware and this
+repo's real Docker stack. Findings:
+
+**Hardware**: Intel Core i5-8265U (4 cores / 8 threads, 1.6 GHz base,
+mobile U-series), 15.79 GB RAM (~7–9 GB typically free alongside the
+running Docker stack and other applications), 51 GB free disk, Intel UHD
+620 + AMD Radeon 540X (mobile, 2 GB VRAM) — **neither GPU is CUDA or ROCm
+capable, so Ollama runs CPU-only on this machine.**
+
+**Verdict: capable, but only for small (1–3B parameter) models, not the
+8B model this ADR originally defaulted to.** `llama3.2:1b` (1.3 GB) was
+pulled and run successfully:
+- ~11 tokens/second generation speed, CPU-only. A short structured
+  explanation takes roughly 6–9 seconds end to end — usable for
+  interactive dev/testing, not instant.
+- Idle memory footprint is low (~50 MB for the Ollama server with no model
+  loaded; Ollama unloads models after a few minutes of inactivity), so it
+  does not permanently compete with the Docker stack for RAM.
+- An 8B model was not tested but is not recommended on this hardware — the
+  proportionally larger memory footprint (likely 5–6 GB resident) and much
+  slower CPU-only generation would make it impractical, and would compete
+  directly with Docker Desktop's WSL2 VM memory ceiling (see below).
+- **Reliability finding, not just a capability finding**: across a handful
+  of real calls to `llama3.2:1b` requesting the `SkillExplanationOutput`
+  schema (a nested string-array field, `key_points`), roughly **1 in 3
+  responses failed schema validation** — the model sometimes serialized
+  `key_points` as a single string (e.g. `"[a, b, c]"`) instead of a real
+  JSON array, despite `format="json"` being requested. **The gateway
+  correctly rejected every one of these** (`SchemaValidationError`, logged
+  as `success=false, error_reason=ValidationError` in a real
+  `AIUsageRecord` row, and a real `502 ai_provider_returned_invalid_output`
+  HTTP response) — this is §47's "reject malformed output, never coerced"
+  working exactly as designed, verified against a real model's real
+  failure mode, not a hypothetical one. Small local models should be
+  expected to have a non-trivial malformed-structured-output rate; this is
+  evidence for that, not an argument to weaken schema validation.
+- A secondary quality observation (not a hard finding, just noted): the
+  1B model's Turkish output quality was mediocre — it mixed English
+  fragments into Turkish sentences (e.g. "forcesnin", "inversely
+  proportional olduğu"). Given this product's primary market is Turkish-
+  speaking students (§2), a 1–3B model may not be the right *production*
+  choice even though it is the right *local-dev-hardware-appropriate*
+  default — a stronger small model with better Turkish coverage, or a
+  larger model run on better hardware/hosted, is a real product question
+  for later, not resolved by this ADR.
+
+**Bug found and fixed**: `OLLAMA_BASE_URL=http://localhost:11434` — this
+ADR's original default — does **not** work when the API runs inside the
+`api` Docker container (confirmed by a real connectivity test: it connects
+successfully from a native/non-Docker process, and fails with "Connection
+refused" from inside the container). `localhost` inside a container refers
+to the container itself, not the Windows host running Ollama.
+`docker-compose.yml`'s `api` service now overrides `OLLAMA_BASE_URL` to
+`http://host.docker.internal:11434` (Docker Desktop's standard host alias
+on Windows/Mac) with an `extra_hosts: host.docker.internal:host-gateway`
+entry added so the same override also resolves correctly on native Linux
+Docker, keeping this compose file portable across platforms. The
+`.env.example`/`Settings` default (`http://localhost:11434`) is still
+correct for the non-Docker, run-uvicorn-natively dev loop — the two
+defaults are for two different ways of running the API, not a
+contradiction.
+
+**Default model changed**: `OLLAMA_MODEL` default is now `llama3.2:1b`
+(was `llama3.1:8b`), and `AI_REQUEST_TIMEOUT_SECONDS` raised from 20.0 to
+30.0 to give real observed CPU-only latency (up to ~17s was seen on a
+schema-invalid response that still had to generate a full completion)
+comfortable headroom.
+
+**End-to-end verification performed**: a real user registered through
+`POST /auth/register`, a real request to `POST /ai/explanations` for the
+already-seeded "Newton'un İkinci Hareket Yasası" skill, through the actual
+running `api` Docker container, through the actual Docker networking path,
+against the actual local Ollama instance. First call hit the malformed-
+output case above (502, correctly handled); second call succeeded (200,
+valid explanation, correct `AIUsageRecord`). This is the first genuine
+end-to-end proof that `OllamaProvider` and the full request path work, not
+just the `FakeProvider`-backed test suite.
 
 ## Mandatory Tests
 

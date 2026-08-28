@@ -74,6 +74,19 @@ services:
       TEST_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-edupulse}:${POSTGRES_PASSWORD:-edupulse}@postgres:5432/edupulse_test
       REDIS_URL: redis://redis:6379/0
       TEST_REDIS_URL: redis://redis:6379/15
+      # `localhost` inside this container is the container itself, not the
+      # host — confirmed by a real connectivity test (ADR-015 addendum):
+      # `localhost:11434` from inside `api` fails even when Ollama is
+      # actually running on the host. `host.docker.internal` is Docker
+      # Desktop's (Win/Mac) standard alias for the host; `extra_hosts`
+      # below makes the same alias resolve on native Linux Docker too, so
+      # this override works identically on every platform this compose
+      # file targets. Whether Ollama is actually running is a separate,
+      # runtime concern (§43 — the API must still start and degrade
+      # gracefully if it isn't).
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "${API_PORT:-8000}:8000"
     depends_on:

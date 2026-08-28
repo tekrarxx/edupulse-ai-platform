@@ -72,10 +72,22 @@ docker compose exec postgres psql -U edupulse -d edupulse -c "CREATE DATABASE ed
 | `ollama` | Yerel LLM (AI Gateway, §44) | 11434 |
 
 `ollama` compose dosyasında tanımlı ama **varsayılan olarak çalıştırılmaz/
-model indirilmez** (bkz. docs/adr/ADR-015-ai-gateway.md). AI Gateway'i
-gerçek bir modelle denemek için: `docker compose up -d ollama`, ardından
-`docker compose exec ollama ollama pull llama3.1:8b` (veya `.env`'deki
-`OLLAMA_MODEL` neyse onu), sonra `POST /ai/explanations`.
+model indirilmez**. Gerçek donanımda test edildi (bkz.
+docs/adr/ADR-015-ai-gateway.md, "Addendum — Real Hardware Verification"):
+CPU-only / GPU hızlandırmasız mütevazı makinelerde bile 1-3B parametreli
+küçük modeller (varsayılan: `llama3.2:1b`) makul hızda (~10 token/sn)
+çalışıyor; 8B+ modeller önerilmiyor.
+
+İki kurulum seçeneği:
+- **Host'ta native (test edilen, önerilen)**: Ollama'yı Windows/Mac/Linux'a
+  doğrudan kurun (https://ollama.com/download), `ollama serve` çalıştırın,
+  `ollama pull llama3.2:1b`. `docker-compose.yml` `api` servisini otomatik
+  olarak `http://host.docker.internal:11434` üzerinden host'a yönlendirir.
+- **Docker container olarak**: `docker compose up -d ollama`, ardından
+  `docker compose exec ollama ollama pull llama3.2:1b`.
+
+Her iki durumda da: `POST /ai/explanations` ile gerçek bir açıklama
+üretebilirsiniz.
 
 `n8n` bu fazda dahil edilmedi; ihtiyaç duyulduğunda (Faz 7'nin gecikmeli
 hatırlama zamanlama tetikleyicisi için) eklenecek.

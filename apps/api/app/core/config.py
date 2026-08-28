@@ -22,9 +22,13 @@ class Settings(BaseSettings):
     api_secret_key: str = "change-me-in-local-env"
 
     # §44 local-first AI. Not started/pulled by default — see ADR-015.
+    # llama3.2:1b, not an 8B model: real-hardware testing on a modest
+    # 4-core/8-thread mobile CPU with no usable GPU acceleration (ADR-015
+    # addendum) found an 8B model impractical on that class of machine —
+    # 1-3B is the realistic default for CPU-only local dev.
     ollama_base_url: str = "http://localhost:11434"
-    ollama_model: str = "llama3.1:8b"
-    ai_request_timeout_seconds: float = 20.0
+    ollama_model: str = "llama3.2:1b"
+    ai_request_timeout_seconds: float = 30.0
 
     @property
     def cors_origins(self) -> list[str]:
