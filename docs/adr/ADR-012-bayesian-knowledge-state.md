@@ -199,9 +199,13 @@ shift mid-comparison):
 - Adding evidence to facet X never changes the Knowledge State for facet Y
   of the same skill (facet independence, Assumption 1).
 - Two Evidence sets that are permutations of each other (same rows, evidence
-  submitted/graded in a different order) yield an identical posterior at the
-  same `as_of`, because the update is a commutative sum, not a sequential
-  fold with intermediate rounding.
+  submitted/graded in a different order) yield the same posterior at the
+  same `as_of` up to floating-point tolerance, because the update is a sum
+  over unordered evidence, not a fold whose result depends on order by
+  construction. In exact arithmetic this is bit-identical; under IEEE 754,
+  float addition is not strictly associative, so a different summation
+  order can differ in the last few bits — the property test compares with
+  a tolerance, not `==`, for exactly this reason.
 - Holding evidence fixed and increasing `as_of` monotonically decreases every
   evidence row's `decay(e, as_of)` weight, pulling `mastery_probability`
   toward whatever the *other*-polarity evidence implies, and pulling

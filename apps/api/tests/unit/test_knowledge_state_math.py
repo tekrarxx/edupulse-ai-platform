@@ -3,6 +3,7 @@
 These exercise `compute_knowledge_state` directly — no DB, no HTTP — since
 it is a pure function of `(evidence_rows, as_of)` by design (§99).
 """
+import math
 from datetime import datetime, timedelta, timezone
 
 from hypothesis import given
@@ -101,12 +102,17 @@ def test_adding_negative_evidence_never_increases_mastery(specs) -> None:
 
 @given(st.lists(_evidence_row, min_size=1, max_size=20))
 def test_permutation_invariance(specs) -> None:
+    """Commutative in exact arithmetic (ADR-012), but IEEE 754 float
+    addition is not strictly associative — a different summation order can
+    differ in the last few bits. Permutation invariance holds up to
+    floating-point tolerance, not bit-identically, so this compares with
+    math.isclose rather than ==."""
     rows = _rows_from_specs(specs)
     forward = compute_knowledge_state(rows, as_of=_AS_OF)
     backward = compute_knowledge_state(list(reversed(rows)), as_of=_AS_OF)
-    assert forward.alpha == backward.alpha
-    assert forward.beta == backward.beta
-    assert forward.mastery_probability == backward.mastery_probability
+    assert math.isclose(forward.alpha, backward.alpha, rel_tol=1e-9, abs_tol=1e-12)
+    assert math.isclose(forward.beta, backward.beta, rel_tol=1e-9, abs_tol=1e-12)
+    assert math.isclose(forward.mastery_probability, backward.mastery_probability, rel_tol=1e-9, abs_tol=1e-12)
 
 
 @given(st.lists(_evidence_row, max_size=25))
