@@ -11,7 +11,11 @@ os.environ["DATABASE_URL"] = os.environ.get("TEST_DATABASE_URL") or os.environ.g
 os.environ["REDIS_URL"] = os.environ.get("TEST_REDIS_URL") or os.environ.get("REDIS_URL", "redis://localhost:6379/15")
 os.environ.setdefault("API_SECRET_KEY", "test-only-secret-not-for-production-use")
 
+import pathlib
+
 import pytest
+from alembic import command
+from alembic.config import Config
 from fastapi.testclient import TestClient
 from redis import Redis
 from redis.exceptions import RedisError
@@ -23,20 +27,30 @@ from app.db.base import Base
 from app.db.session import SessionLocal, engine
 from app.main import app
 
+_API_ROOT = pathlib.Path(__file__).resolve().parent.parent
+
 
 @pytest.fixture(scope="session", autouse=True)
 def _test_schema():
-    """Creates any table that migrations haven't already created (checkfirst
-    is create_all's default, so this is a no-op against a real DB that
-    `alembic upgrade head` already migrated — it only matters for the local
-    sqlite fallback, where no migration runner touches the file)."""
-    if engine.dialect.name == "sqlite":
+    """Postgres (the edupulse_test database, TEST_DATABASE_URL): runs the
+    real Alembic migration chain, not just Base.metadata.create_all — some
+    schema (the observations append-only trigger, migration 0004) exists
+    only in the migration, not in any SQLAlchemy model construct, so
+    create_all alone would silently skip it and the append-only test would
+    pass for the wrong reason (§105). SQLite (local non-Docker fallback):
+    still create_all, since the migration chain's Postgres-only DDL doesn't
+    run there anyway."""
+    if engine.dialect.name == "postgresql":
+        alembic_cfg = Config(str(_API_ROOT / "alembic.ini"))
+        alembic_cfg.set_main_option("script_location", str(_API_ROOT / "alembic"))
+        command.upgrade(alembic_cfg, "head")
+    else:
 
         @event.listens_for(engine, "connect")
         def _enable_sqlite_fk(dbapi_connection, _):
             dbapi_connection.execute("PRAGMA foreign_keys = ON")
 
-    Base.metadata.create_all(bind=engine)
+        Base.metadata.create_all(bind=engine)
     yield
 
 
