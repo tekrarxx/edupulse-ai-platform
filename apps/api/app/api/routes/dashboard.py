@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_role
 from app.db.session import get_db
 from app.models.relationship import ParentStudentLink
 from app.models.user import Role, User
-from app.schemas.dashboard import StudentDashboardOut
+from app.schemas.dashboard import StudentDashboardOut, StudentSummaryOut, TeacherDashboardOut
 from app.services import dashboard_service
 
 router = APIRouter(prefix="/dashboard")
@@ -66,4 +66,33 @@ def get_student_dashboard(
         weak_skill_count=dashboard.weak_skill_count,
         strong_skill_count=dashboard.strong_skill_count,
         upcoming_retention_count=dashboard.upcoming_retention_count,
+    )
+
+
+_teacher_access = Depends(require_role(Role.TEACHER))
+
+
+@router.get("/teacher", response_model=TeacherDashboardOut, dependencies=[_teacher_access])
+def get_teacher_dashboard(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> TeacherDashboardOut:
+    """§76. Scoped to the requesting teacher's own students only (via
+    TeacherStudentLink) — not every student in the tenant (§80). A
+    school/tenant-wide view is a separate Admin Dashboard endpoint, not
+    this one."""
+    dashboard = dashboard_service.get_teacher_dashboard(db, tenant_id=current_user.tenant_id, teacher_user_id=current_user.id)
+    return TeacherDashboardOut(
+        students=[
+            StudentSummaryOut(
+                student_user_id=s.student_user_id,
+                student_name=s.student_name,
+                needs_attention=s.needs_attention,
+                attention_reasons=s.attention_reasons,
+                weak_skill_names=s.weak_skill_names,
+                improving_skill_names=s.improving_skill_names,
+                forgetting_skill_names=s.forgetting_skill_names,
+                misconception_skill_names=s.misconception_skill_names,
+                next_action_label=s.next_action_label,
+            )
+            for s in dashboard.students
+        ],
+        students_needing_attention_count=dashboard.students_needing_attention_count,
     )

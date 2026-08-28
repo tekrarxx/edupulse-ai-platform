@@ -15,18 +15,22 @@ export default function DashboardPage() {
   useEffect(() => {
     if (status === "unauthenticated") {
       router.replace("/login");
+    } else if (status === "authenticated" && user?.role === "TEACHER") {
+      // This route renders the student view; a teacher has their own
+      // aggregate page (§76) rather than a single-student one.
+      router.replace("/dashboard/teacher");
     }
-  }, [status, router]);
+  }, [status, user, router]);
 
   useEffect(() => {
-    if (status === "authenticated" && accessToken) {
+    if (status === "authenticated" && accessToken && user?.role !== "TEACHER") {
       fetchStudentDashboard(accessToken)
         .then(setDashboard)
         .catch(() => setError("Panonuz yüklenirken bir sorun oluştu."));
     }
-  }, [status, accessToken]);
+  }, [status, accessToken, user]);
 
-  if (status !== "authenticated" || !user) {
+  if (status !== "authenticated" || !user || user.role === "TEACHER") {
     return null;
   }
 

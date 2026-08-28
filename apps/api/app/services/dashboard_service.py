@@ -16,14 +16,17 @@ submission itself triggers a recompute for the APPLICATION facet (see
 assessment_service._apply_evaluation -> retention_service.maybe_schedule_checkpoints,
 which calls get_or_recompute_knowledge_state).
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
 
 from app.models.curriculum import Skill, SkillFacetType
-from app.models.decision import CandidateActionType, Decision
+from app.models.decision import AuthorizationResult, CandidateActionType, Decision
+from app.models.evidence import Evidence, FailureMode
 from app.models.knowledge_state import ConfidenceLabel, KnowledgeState
-from app.models.retention import RetentionCheckpoint, RetentionCheckpointStatus
+from app.models.relationship import TeacherStudentLink
+from app.models.retention import Hypothesis, HypothesisVerdict, RetentionCheckpoint, RetentionCheckpointStatus
+from app.models.user import User
 
 _ACTION_LABELS: dict[CandidateActionType, str] = {
     CandidateActionType.INSUFFICIENT_EVIDENCE_ACTION: "Bilgini ölçmek için birkaç soru çöz",
@@ -147,4 +150,173 @@ def get_student_dashboard(db: Session, *, tenant_id: str, student_user_id: str) 
         weak_skill_count=weak_count,
         strong_skill_count=strong_count,
         upcoming_retention_count=len(pending_checkpoints),
+    )
+
+
+# --- Teacher dashboard (§76) ---
+#
+# Scoped to the requesting teacher's own students via TeacherStudentLink
+# (§80 "do not expose unnecessary sensitive learner information") — not
+# every student in the tenant. A tenant-wide view belongs to the Admin
+# Dashboard (a separate slice), not this one.
+#
+# Every one of §76's six questions is answered from a real, already-computed
+# signal, never a fabricated heuristic:
+#   - "needs attention"   -> a weak skill, a NOT_SUPPORTED retention verdict,
+#                             or a Decision that was actually ESCALATED by
+#                             the PDE's own authorization step (Phase 6) —
+#                             Prometheus already said "a human should look
+#                             at this."
+#   - "weak skills"        -> the same mastery-label classification the
+#                             student dashboard uses.
+#   - "improving"           -> compares the APPLICATION mastery in the
+#                             earliest vs. latest real Decision's
+#                             knowledge_state_snapshot for that skill
+#                             (Decisions are append-only and timestamped —
+#                             a genuine trend, not an invented one).
+#   - "forgetting"          -> a completed RetentionCheckpoint whose
+#                             Hypothesis verdict is NOT_SUPPORTED (Phase 7's
+#                             falsification framework existing for exactly
+#                             this purpose).
+#   - "misconceptions"      -> Evidence.failure_mode == MISCONCEPTION
+#                             (teacher-classified, per Phase 7/§31).
+#   - "what should I do next" -> the latest decision's action label.
+
+_IMPROVEMENT_MARGIN = 0.1
+
+
+@dataclass(frozen=True)
+class StudentSummary:
+    student_user_id: str
+    student_name: str
+    needs_attention: bool
+    attention_reasons: list[str] = field(default_factory=list)
+    weak_skill_names: list[str] = field(default_factory=list)
+    improving_skill_names: list[str] = field(default_factory=list)
+    forgetting_skill_names: list[str] = field(default_factory=list)
+    misconception_skill_names: list[str] = field(default_factory=list)
+    next_action_label: str | None = None
+
+
+@dataclass(frozen=True)
+class TeacherDashboard:
+    students: list[StudentSummary]
+    students_needing_attention_count: int
+
+
+def _application_mastery(snapshot: list[dict]) -> float | None:
+    for entry in snapshot:
+        if entry.get("facet_type") == SkillFacetType.APPLICATION.value:
+            return entry.get("mastery_probability")
+    return None
+
+
+def _summarize_student(db: Session, *, tenant_id: str, student: User) -> StudentSummary:
+    knowledge_states = (
+        db.query(KnowledgeState)
+        .filter(
+            KnowledgeState.tenant_id == tenant_id,
+            KnowledgeState.student_user_id == student.id,
+            KnowledgeState.facet_type == SkillFacetType.APPLICATION,
+        )
+        .all()
+    )
+    weak_skill_ids = {ks.skill_id for ks in knowledge_states if _mastery_label(ks)[1]}
+
+    decisions = (
+        db.query(Decision)
+        .filter(Decision.tenant_id == tenant_id, Decision.student_user_id == student.id, Decision.is_shadow.is_(False))
+        .order_by(Decision.created_at.asc())
+        .all()
+    )
+    first_decision_by_skill: dict[str, Decision] = {}
+    last_decision_by_skill: dict[str, Decision] = {}
+    escalated_skill_ids: set[str] = set()
+    for decision in decisions:
+        first_decision_by_skill.setdefault(decision.skill_id, decision)
+        last_decision_by_skill[decision.skill_id] = decision
+        if decision.authorization_result == AuthorizationResult.ESCALATED:
+            escalated_skill_ids.add(decision.skill_id)
+
+    improving_skill_ids: set[str] = set()
+    for skill_id, first in first_decision_by_skill.items():
+        last = last_decision_by_skill[skill_id]
+        if first.id == last.id:
+            continue
+        first_mastery = _application_mastery(first.knowledge_state_snapshot)
+        last_mastery = _application_mastery(last.knowledge_state_snapshot)
+        if first_mastery is not None and last_mastery is not None and last_mastery - first_mastery >= _IMPROVEMENT_MARGIN:
+            improving_skill_ids.add(skill_id)
+
+    forgetting_skill_ids = {
+        hyp.skill_id
+        for hyp in db.query(Hypothesis)
+        .filter(
+            Hypothesis.tenant_id == tenant_id,
+            Hypothesis.student_user_id == student.id,
+            Hypothesis.verdict == HypothesisVerdict.NOT_SUPPORTED,
+        )
+        .all()
+    }
+
+    misconception_skill_ids = {
+        ev.skill_id
+        for ev in db.query(Evidence)
+        .filter(
+            Evidence.tenant_id == tenant_id,
+            Evidence.student_user_id == student.id,
+            Evidence.failure_mode == FailureMode.MISCONCEPTION,
+        )
+        .all()
+    }
+
+    all_skill_ids = weak_skill_ids | improving_skill_ids | forgetting_skill_ids | misconception_skill_ids | escalated_skill_ids
+    skills_by_id = {s.id: s for s in db.query(Skill).filter(Skill.id.in_(all_skill_ids)).all()} if all_skill_ids else {}
+
+    def _names(ids: set[str]) -> list[str]:
+        return sorted(skills_by_id[i].name for i in ids if i in skills_by_id)
+
+    attention_reasons: list[str] = []
+    if weak_skill_ids:
+        attention_reasons.append("Zayıf beceriler var")
+    if forgetting_skill_ids:
+        attention_reasons.append("Hatırlama kontrolünü geçemedi")
+    if escalated_skill_ids:
+        attention_reasons.append("Sistem öğretmen incelemesi öneriyor")
+
+    latest_overall_decision = max(decisions, key=lambda d: d.created_at) if decisions else None
+    next_action_label = (
+        _ACTION_LABELS.get(latest_overall_decision.selected_action) if latest_overall_decision is not None else None
+    )
+
+    return StudentSummary(
+        student_user_id=student.id,
+        student_name=student.display_name,
+        needs_attention=bool(attention_reasons),
+        attention_reasons=attention_reasons,
+        weak_skill_names=_names(weak_skill_ids),
+        improving_skill_names=_names(improving_skill_ids),
+        forgetting_skill_names=_names(forgetting_skill_ids),
+        misconception_skill_names=_names(misconception_skill_ids),
+        next_action_label=next_action_label,
+    )
+
+
+def get_teacher_dashboard(db: Session, *, tenant_id: str, teacher_user_id: str) -> TeacherDashboard:
+    linked_student_ids = [
+        link.student_user_id
+        for link in db.query(TeacherStudentLink)
+        .filter(TeacherStudentLink.tenant_id == tenant_id, TeacherStudentLink.teacher_user_id == teacher_user_id)
+        .all()
+    ]
+    if not linked_student_ids:
+        return TeacherDashboard(students=[], students_needing_attention_count=0)
+
+    students = db.query(User).filter(User.tenant_id == tenant_id, User.id.in_(linked_student_ids)).all()
+    summaries = [_summarize_student(db, tenant_id=tenant_id, student=student) for student in students]
+    summaries.sort(key=lambda s: (not s.needs_attention, s.student_name))
+
+    return TeacherDashboard(
+        students=summaries,
+        students_needing_attention_count=sum(1 for s in summaries if s.needs_attention),
     )

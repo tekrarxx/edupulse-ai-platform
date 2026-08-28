@@ -1,11 +1,13 @@
 import uuid
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.core.security import create_access_token, hash_password
-from app.models.relationship import ParentStudentLink
+from app.models.relationship import ParentStudentLink, TeacherStudentLink
+from app.models.retention import RetentionCheckpoint
 from app.models.tenant import Tenant, TenantType
 from app.models.user import Role, User
 
@@ -196,4 +198,178 @@ def test_parent_without_link_cannot_view_dashboard(client: TestClient, db: Sessi
     _, parent_token = _seed_user(db, role=Role.PARENT, tenant=tenant)
 
     response = client.get("/dashboard/student", params={"student_id": student_user.id}, headers=_headers(parent_token))
+    assert response.status_code == 403
+
+
+# --- Teacher dashboard (Section 76) ---
+
+
+@pytest.fixture
+def teacher(db: Session, tenant: Tenant) -> tuple[User, str]:
+    return _seed_user(db, role=Role.TEACHER, tenant=tenant)
+
+
+def _link_teacher(db: Session, tenant: Tenant, teacher_user: User, student_user: User) -> None:
+    db.add(TeacherStudentLink(tenant_id=tenant.id, teacher_user_id=teacher_user.id, student_user_id=student_user.id))
+    db.commit()
+
+
+def _create_application_question(client: TestClient, admin_token: str, skill_id: str, correct_answer: str = "4") -> str:
+    return client.post(
+        "/assessment/questions",
+        json={"skill_id": skill_id, "facet_type": "application", "prompt": "2+2=?", "correct_answer": correct_answer},
+        headers=_headers(admin_token),
+    ).json()["id"]
+
+
+def test_teacher_sees_only_linked_students(
+    client: TestClient, db: Session, tenant: Tenant, teacher: tuple[User, str]
+) -> None:
+    teacher_user, teacher_token = teacher
+    linked_student, _ = _seed_user(db, role=Role.STUDENT, tenant=tenant)
+    unlinked_student, _ = _seed_user(db, role=Role.STUDENT, tenant=tenant)
+    _link_teacher(db, tenant, teacher_user, linked_student)
+
+    response = client.get("/dashboard/teacher", headers=_headers(teacher_token))
+    assert response.status_code == 200
+    body = response.json()
+    student_ids = {s["student_user_id"] for s in body["students"]}
+    assert student_ids == {linked_student.id}
+    assert unlinked_student.id not in student_ids
+
+
+def test_teacher_with_no_linked_students_sees_empty_dashboard(client: TestClient, db: Session, teacher: tuple[User, str]) -> None:
+    _, teacher_token = teacher
+    response = client.get("/dashboard/teacher", headers=_headers(teacher_token))
+    assert response.status_code == 200
+    body = response.json()
+    assert body["students"] == []
+    assert body["students_needing_attention_count"] == 0
+
+
+def test_teacher_dashboard_flags_weak_skill(
+    client: TestClient, db: Session, admin: tuple[User, str], teacher: tuple[User, str], tenant: Tenant, skill_id: str
+) -> None:
+    _, admin_token = admin
+    teacher_user, teacher_token = teacher
+    student_user, student_token = _seed_user(db, role=Role.STUDENT, tenant=tenant)
+    _link_teacher(db, tenant, teacher_user, student_user)
+
+    for _ in range(5):
+        q = _create_application_question(client, admin_token, skill_id)
+        _answer(client, student_token, q, "wrong")
+
+    response = client.get("/dashboard/teacher", headers=_headers(teacher_token))
+    summary = response.json()["students"][0]
+    assert summary["needs_attention"] is True
+    assert any("Zay" in reason for reason in summary["attention_reasons"])
+    assert any("Newton" in name for name in summary["weak_skill_names"])
+
+
+def test_teacher_dashboard_flags_escalated_decision(
+    client: TestClient, db: Session, admin: tuple[User, str], teacher: tuple[User, str], tenant: Tenant, skill_id: str
+) -> None:
+    _, admin_token = admin
+    teacher_user, teacher_token = teacher
+    student_user, student_token = _seed_user(db, role=Role.STUDENT, tenant=tenant)
+    _link_teacher(db, tenant, teacher_user, student_user)
+
+    correct_q = _create_application_question(client, admin_token, skill_id)
+    _answer(client, student_token, correct_q, "4")
+    wrong_q = _create_application_question(client, admin_token, skill_id)
+    _answer(client, student_token, wrong_q, "wrong")
+
+    decision = client.post("/decisions/next-action", params={"skill_id": skill_id}, headers=_headers(student_token)).json()
+    assert decision["selected_action"] == "teacher_intervention"
+    assert decision["authorization_result"] == "escalated"
+
+    response = client.get("/dashboard/teacher", headers=_headers(teacher_token))
+    summary = response.json()["students"][0]
+    assert summary["needs_attention"] is True
+    assert any("incelemesi" in reason for reason in summary["attention_reasons"])
+    assert summary["next_action_label"] == "Öğretmenine danış"
+
+
+def test_teacher_dashboard_flags_improving_skill(
+    client: TestClient, db: Session, admin: tuple[User, str], teacher: tuple[User, str], tenant: Tenant, skill_id: str
+) -> None:
+    _, admin_token = admin
+    teacher_user, teacher_token = teacher
+    student_user, student_token = _seed_user(db, role=Role.STUDENT, tenant=tenant)
+    _link_teacher(db, tenant, teacher_user, student_user)
+
+    q1 = _create_application_question(client, admin_token, skill_id)
+    _answer(client, student_token, q1, "4")
+    client.post("/decisions/next-action", params={"skill_id": skill_id}, headers=_headers(student_token))
+
+    for _ in range(4):
+        q = _create_application_question(client, admin_token, skill_id)
+        _answer(client, student_token, q, "4")
+    client.post("/decisions/next-action", params={"skill_id": skill_id}, headers=_headers(student_token))
+
+    response = client.get("/dashboard/teacher", headers=_headers(teacher_token))
+    summary = response.json()["students"][0]
+    assert any("Newton" in name for name in summary["improving_skill_names"])
+
+
+def test_teacher_dashboard_flags_forgetting_skill(
+    client: TestClient, db: Session, admin: tuple[User, str], teacher: tuple[User, str], tenant: Tenant, skill_id: str
+) -> None:
+    _, admin_token = admin
+    teacher_user, teacher_token = teacher
+    student_user, student_token = _seed_user(db, role=Role.STUDENT, tenant=tenant)
+    _link_teacher(db, tenant, teacher_user, student_user)
+
+    for _ in range(5):
+        q = _create_application_question(client, admin_token, skill_id)
+        _answer(client, student_token, q, "4")
+
+    checkpoint = db.query(RetentionCheckpoint).filter(RetentionCheckpoint.student_user_id == student_user.id).first()
+    checkpoint.scheduled_for = datetime.now(timezone.utc) - timedelta(days=1)
+    db.commit()
+
+    delayed_q = _create_application_question(client, admin_token, skill_id)
+    client.post(
+        f"/retention/checkpoints/{checkpoint.id}/complete",
+        json={"question_id": delayed_q, "learner_response": "wrong", "idempotency_key": str(uuid.uuid4())},
+        headers=_headers(admin_token),
+    )
+
+    response = client.get("/dashboard/teacher", headers=_headers(teacher_token))
+    summary = response.json()["students"][0]
+    assert any("Newton" in name for name in summary["forgetting_skill_names"])
+    assert any("Hat" in reason for reason in summary["attention_reasons"])
+
+
+def test_teacher_dashboard_flags_misconception(
+    client: TestClient, db: Session, admin: tuple[User, str], teacher: tuple[User, str], tenant: Tenant, skill_id: str
+) -> None:
+    _, admin_token = admin
+    teacher_user, teacher_token = teacher
+    student_user, student_token = _seed_user(db, role=Role.STUDENT, tenant=tenant)
+    _link_teacher(db, tenant, teacher_user, student_user)
+
+    q = _create_application_question(client, admin_token, skill_id)
+    _answer(client, student_token, q, "wrong")
+    evidence = client.get("/assessment/evidence", headers=_headers(student_token)).json()[0]
+    client.post(
+        f"/assessment/evidence/{evidence['id']}/failure-mode",
+        json={"failure_mode": "misconception"},
+        headers=_headers(admin_token),
+    )
+
+    response = client.get("/dashboard/teacher", headers=_headers(teacher_token))
+    summary = response.json()["students"][0]
+    assert any("Newton" in name for name in summary["misconception_skill_names"])
+
+
+def test_student_cannot_access_teacher_dashboard(client: TestClient, db: Session, tenant: Tenant) -> None:
+    _, student_token = _seed_user(db, role=Role.STUDENT, tenant=tenant)
+    response = client.get("/dashboard/teacher", headers=_headers(student_token))
+    assert response.status_code == 403
+
+
+def test_admin_cannot_access_teacher_dashboard(client: TestClient, db: Session, tenant: Tenant) -> None:
+    _, admin_token = _seed_user(db, role=Role.SUPER_ADMIN, tenant=tenant)
+    response = client.get("/dashboard/teacher", headers=_headers(admin_token))
     assert response.status_code == 403

@@ -8,13 +8,14 @@ jest.mock("next/navigation", () => ({
 }));
 
 const logoutMock = jest.fn();
+const useAuthMock = jest.fn(() => ({
+  user: { id: "u1", tenant_id: "t1", email: "a@example.com", display_name: "Ayşe", role: "STUDENT", is_active: true },
+  accessToken: "fake-token",
+  status: "authenticated",
+  logout: logoutMock,
+}));
 jest.mock("@/lib/auth-context", () => ({
-  useAuth: () => ({
-    user: { id: "u1", tenant_id: "t1", email: "a@example.com", display_name: "Ayşe", role: "STUDENT", is_active: true },
-    accessToken: "fake-token",
-    status: "authenticated",
-    logout: logoutMock,
-  }),
+  useAuth: () => useAuthMock(),
 }));
 
 const fetchStudentDashboardMock = jest.fn();
@@ -25,6 +26,27 @@ jest.mock("@/lib/dashboard", () => ({
 describe("DashboardPage", () => {
   beforeEach(() => {
     fetchStudentDashboardMock.mockReset();
+    replaceMock.mockReset();
+    useAuthMock.mockReturnValue({
+      user: { id: "u1", tenant_id: "t1", email: "a@example.com", display_name: "Ayşe", role: "STUDENT", is_active: true },
+      accessToken: "fake-token",
+      status: "authenticated",
+      logout: logoutMock,
+    });
+  });
+
+  it("redirects a TEACHER to the teacher dashboard instead of rendering the student view", () => {
+    useAuthMock.mockReturnValue({
+      user: { id: "t1", tenant_id: "t1", email: "t@example.com", display_name: "Öğretmen", role: "TEACHER", is_active: true },
+      accessToken: "fake-token",
+      status: "authenticated",
+      logout: logoutMock,
+    });
+
+    render(<DashboardPage />);
+
+    expect(replaceMock).toHaveBeenCalledWith("/dashboard/teacher");
+    expect(fetchStudentDashboardMock).not.toHaveBeenCalled();
   });
 
   it("renders skill progress using only plain-language labels, never a raw score", async () => {

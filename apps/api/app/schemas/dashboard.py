@@ -21,3 +21,24 @@ class StudentDashboardOut(BaseModel):
     weak_skill_count: int
     strong_skill_count: int
     upcoming_retention_count: int
+
+
+class StudentSummaryOut(BaseModel):
+    """§76. Every field here traces to a real signal (weak knowledge state,
+    a NOT_SUPPORTED retention verdict, an escalated Decision, a teacher-
+    classified misconception) — never a fabricated heuristic."""
+
+    student_user_id: str
+    student_name: str
+    needs_attention: bool
+    attention_reasons: list[str]
+    weak_skill_names: list[str]
+    improving_skill_names: list[str]
+    forgetting_skill_names: list[str]
+    misconception_skill_names: list[str]
+    next_action_label: str | None
+
+
+class TeacherDashboardOut(BaseModel):
+    students: list[StudentSummaryOut]
+    students_needing_attention_count: int

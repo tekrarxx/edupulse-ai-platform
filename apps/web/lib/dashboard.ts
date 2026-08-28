@@ -31,3 +31,30 @@ export async function fetchStudentDashboard(accessToken: string): Promise<Studen
   }
   return response.json();
 }
+
+export type StudentSummary = {
+  student_user_id: string;
+  student_name: string;
+  needs_attention: boolean;
+  attention_reasons: string[];
+  weak_skill_names: string[];
+  improving_skill_names: string[];
+  forgetting_skill_names: string[];
+  misconception_skill_names: string[];
+  next_action_label: string | null;
+};
+
+export type TeacherDashboard = {
+  students: StudentSummary[];
+  students_needing_attention_count: number;
+};
+
+export async function fetchTeacherDashboard(accessToken: string): Promise<TeacherDashboard> {
+  const response = await fetch(`${API_URL}/dashboard/teacher`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!response.ok) {
+    throw new Error(`teacher dashboard request failed with status ${response.status}`);
+  }
+  return response.json();
+}
