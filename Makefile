@@ -28,4 +28,4 @@ format:
 	docker compose exec api ruff format .
 
 seed:
-	@echo "No seed data yet — curriculum seeding starts in Phase 3 (P2)."
+	docker compose exec api python -m scripts.seed_curriculum
