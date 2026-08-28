@@ -4,6 +4,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.api.routes.assessment import router as assessment_router
 from app.api.routes.auth import router as auth_router
 from app.api.routes.curriculum import router as curriculum_router
 from app.api.routes.health import router as health_router
@@ -35,3 +36,4 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 app.include_router(health_router, tags=["health"])
 app.include_router(auth_router, tags=["auth"])
 app.include_router(curriculum_router, tags=["curriculum"])
+app.include_router(assessment_router, tags=["assessment"])
