@@ -38,6 +38,26 @@ services:
     networks:
       - edupulse-net
 
+  # §44 local-first AI. No `depends_on` from `api`: the AI Gateway must
+  # degrade gracefully (a typed error + a logged AIUsageRecord) when Ollama
+  # is absent, not block API startup on it (§43 — LLMs are supporting
+  # components, never a hard dependency of the core system).
+  ollama:
+    image: ollama/ollama:latest
+    container_name: edupulse-ollama
+    restart: unless-stopped
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - edupulse-net
+
   api:
     build:
       context: ./apps/api
@@ -97,3 +117,4 @@ networks:
 volumes:
   postgres_data:
   redis_data:
+  ollama_data:

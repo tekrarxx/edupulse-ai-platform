@@ -4,6 +4,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.api.routes.ai import router as ai_router
 from app.api.routes.assessment import router as assessment_router
 from app.api.routes.auth import router as auth_router
 from app.api.routes.curriculum import router as curriculum_router
@@ -43,3 +44,4 @@ app.include_router(assessment_router, tags=["assessment"])
 app.include_router(knowledge_state_router, tags=["knowledge-state"])
 app.include_router(decision_router, tags=["decisions"])
 app.include_router(retention_router, tags=["retention"])
+app.include_router(ai_router, tags=["ai"])

@@ -14,6 +14,9 @@ from redis import Redis
 from redis.exceptions import RedisError
 from sqlalchemy.orm import Session
 
+from app.ai.gateway import AIGateway
+from app.ai.providers.base import AIProvider
+from app.ai.providers.ollama import OllamaProvider
 from app.core.config import get_settings
 from app.core.security import decode_access_token
 from app.db.session import get_db
@@ -53,6 +56,23 @@ def require_role(*allowed_roles: Role):
         return current_user
 
     return _check
+
+
+def get_ai_provider() -> AIProvider:
+    """The AI Gateway's DI seam (ADR-015 §3): tests override this dependency
+    with `app.dependency_overrides[get_ai_provider] = lambda: FakeProvider(...)`
+    so `AIGateway`'s own validation/safety/accounting logic is exercised
+    end-to-end against a fake transport, never a live network call."""
+    settings = get_settings()
+    return OllamaProvider(
+        base_url=settings.ollama_base_url,
+        model=settings.ollama_model,
+        timeout_seconds=settings.ai_request_timeout_seconds,
+    )
+
+
+def get_ai_gateway(provider: AIProvider = Depends(get_ai_provider), db: Session = Depends(get_db)) -> AIGateway:
+    return AIGateway(provider=provider, db=db)
 
 
 def enforce_rate_limit(request: Request, *, key_prefix: str, limit: int, window_seconds: int) -> None:

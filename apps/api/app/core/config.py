@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     api_cors_origins: str = "http://localhost:3000"
     api_secret_key: str = "change-me-in-local-env"
 
+    # §44 local-first AI. Not started/pulled by default — see ADR-015.
+    ollama_base_url: str = "http://localhost:11434"
+    ollama_model: str = "llama3.1:8b"
+    ai_request_timeout_seconds: float = 20.0
+
     @property
     def cors_origins(self) -> list[str]:
         return [origin.strip() for origin in self.api_cors_origins.split(",") if origin.strip()]

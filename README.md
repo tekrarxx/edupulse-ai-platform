@@ -69,9 +69,16 @@ docker compose exec postgres psql -U edupulse -d edupulse -c "CREATE DATABASE ed
 | `redis` | Redis 7 | 6379 |
 | `api` | FastAPI backend | 8000 |
 | `web` | Next.js frontend | 3000 |
+| `ollama` | Yerel LLM (AI Gateway, §44) | 11434 |
 
-`n8n` ve `ollama` bu fazda dahil edilmedi; ihtiyaç duyulduğunda (sırasıyla
-Faz 7 — gecikmeli hatırlama zamanlaması ve Faz 8 — AI Gateway) eklenecek.
+`ollama` compose dosyasında tanımlı ama **varsayılan olarak çalıştırılmaz/
+model indirilmez** (bkz. docs/adr/ADR-015-ai-gateway.md). AI Gateway'i
+gerçek bir modelle denemek için: `docker compose up -d ollama`, ardından
+`docker compose exec ollama ollama pull llama3.1:8b` (veya `.env`'deki
+`OLLAMA_MODEL` neyse onu), sonra `POST /ai/explanations`.
+
+`n8n` bu fazda dahil edilmedi; ihtiyaç duyulduğunda (Faz 7'nin gecikmeli
+hatırlama zamanlama tetikleyicisi için) eklenecek.
 
 ## Depo yapısı
 
