@@ -13,6 +13,7 @@ services:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-edupulse} -d ${POSTGRES_DB:-edupulse}"]
       interval: 5s
@@ -47,7 +48,12 @@ services:
       - .env
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-edupulse}:${POSTGRES_PASSWORD:-edupulse}@postgres:5432/${POSTGRES_DB:-edupulse}
+      # A separate database, not a separate DATABASE_URL override at test
+      # time, is deliberate: pytest must never be able to accidentally target
+      # the real dev database just because an env var wasn't set (§86).
+      TEST_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-edupulse}:${POSTGRES_PASSWORD:-edupulse}@postgres:5432/edupulse_test
       REDIS_URL: redis://redis:6379/0
+      TEST_REDIS_URL: redis://redis:6379/15
     ports:
       - "${API_PORT:-8000}:8000"
     depends_on:

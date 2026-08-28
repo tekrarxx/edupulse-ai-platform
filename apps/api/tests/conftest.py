@@ -1,7 +1,14 @@
 import os
 
-os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/15")
+# Tests must never be able to touch the developer's real local data (§86,
+# §105). TEST_DATABASE_URL / TEST_REDIS_URL (set by docker-compose.yml for
+# the api service) take priority over DATABASE_URL / REDIS_URL — even though
+# both are already set inside Docker — specifically so a test run can never
+# fall through to the real dev database just because someone forgot to wire
+# a test-only override. Outside Docker, with neither set, this falls back to
+# a local SQLite file, matching the pre-existing non-Docker dev loop.
+os.environ["DATABASE_URL"] = os.environ.get("TEST_DATABASE_URL") or os.environ.get("DATABASE_URL", "sqlite:///./test.db")
+os.environ["REDIS_URL"] = os.environ.get("TEST_REDIS_URL") or os.environ.get("REDIS_URL", "redis://localhost:6379/15")
 os.environ.setdefault("API_SECRET_KEY", "test-only-secret-not-for-production-use")
 
 import pytest

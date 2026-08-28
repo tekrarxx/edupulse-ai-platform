@@ -49,6 +49,18 @@ make test
 
 Katman bazlı çalıştırmak için: `make test-api`, `make test-web`.
 
+`pytest`, gerçek geliştirme veritabanınızı hiç kullanmaz — ayrı bir
+`edupulse_test` veritabanına yazar (`TEST_DATABASE_URL`,
+`docker-compose.yml`). Bu veritabanı, **taze bir `postgres_data` volume'ünde**
+`infrastructure/postgres/init/01-create-test-db.sql` tarafından otomatik
+oluşturulur (Postgres imajı `docker-entrypoint-initdb.d` script'lerini yalnızca
+ilk kurulumda çalıştırır). Zaten var olan bir volume'de çalışıyorsanız (örn.
+bu depo Faz 3 öncesinde kurulduysa) bir kerelik elle oluşturmanız gerekir:
+
+```
+docker compose exec postgres psql -U edupulse -d edupulse -c "CREATE DATABASE edupulse_test;"
+```
+
 ## Servisler
 
 | Servis | Açıklama | Port |
