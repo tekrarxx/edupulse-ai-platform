@@ -1,0 +1,93 @@
+name: edupulse
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: edupulse-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-edupulse}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-edupulse}
+      POSTGRES_DB: ${POSTGRES_DB:-edupulse}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-edupulse} -d ${POSTGRES_DB:-edupulse}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - edupulse-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: edupulse-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - edupulse-net
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: edupulse-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-edupulse}:${POSTGRES_PASSWORD:-edupulse}@postgres:5432/${POSTGRES_DB:-edupulse}
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./apps/api:/app
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - edupulse-net
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    container_name: edupulse-web
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      - api
+    volumes:
+      - ./apps/web:/app
+      - /app/node_modules
+      - /app/.next
+    networks:
+      - edupulse-net
+
+networks:
+  edupulse-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
