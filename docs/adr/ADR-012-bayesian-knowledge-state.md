@@ -352,3 +352,40 @@ Shadow Mode available.
   per the existing models).
 
 STOP — this ADR requires approval before Step 5B (implementation) begins.
+
+## Addendum (Roadmap Stage D, 2026-08-30): Batched Multi-Facet Read Path
+
+`docs/audit/LOAD-TEST.md` measured `POST /decisions/next-action`'s latency
+under concurrency and diagnosed the cause: `get_knowledge_states_for_skill`
+called `get_or_recompute_knowledge_state` once per facet in a loop — five
+separate Evidence+Observation queries, five separate KnowledgeState
+upsert queries, and **five separate `db.commit()` calls** per decision, each
+a full round-trip.
+
+`get_knowledge_states_for_skill` (`app/services/knowledge_state_service.py`)
+was rewritten to batch this: one Skill lookup, one Evidence+Observation
+query across all facets (grouped by `facet_type` in Python), one
+KnowledgeState query, one commit. `get_or_recompute_knowledge_state`
+(the single-facet function, still used directly by
+`app/api/routes/knowledge_state.py`'s facet-scoped query and
+`app/services/retention_service.py`) is untouched.
+
+**What did not change, and why this is not a Prometheus mathematical
+change requiring the full §98 process**: `compute_knowledge_state` — the
+pure Beta-Binomial core this ADR specifies — was not modified at all,
+called with the exact same arguments either way. The field-by-field
+KnowledgeState upsert was extracted into a shared `_apply_result_to_state`
+helper used by both the single-facet and batched paths, so it is
+*exactly* the same code, not a re-implementation. This is a data-access
+optimization (fewer round-trips to the same computation), not a change to
+what is computed.
+
+**Verified, not assumed**: `tests/unit/test_knowledge_state_batching.py`
+asserts the batched and per-facet paths produce bit-identical
+`alpha`/`beta`/`mastery_probability`/`confidence_label`/`effective_n`/
+`variance`/`evidence_count`/`model_version`/`as_of` for the same Evidence
+rows (§99) — not merely similar values. Real before/after latency
+measurement (same methodology, same hardware) is in
+`docs/audit/LOAD-TEST.md` §6: roughly a 2× reduction at every concurrency
+level tested (10/25/40 simultaneous decision requests), zero errors either
+before or after.

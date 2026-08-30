@@ -104,6 +104,19 @@ def compute_knowledge_state(
     )
 
 
+def _apply_result_to_state(state: KnowledgeState, result: KnowledgeStateResult) -> None:
+    state.alpha = result.alpha
+    state.beta = result.beta
+    state.mastery_probability = result.mastery_probability
+    state.confidence_label = result.confidence_label
+    state.effective_n = result.effective_n
+    state.variance = result.variance
+    state.evidence_count = result.evidence_count
+    state.model_version = result.model_version
+    state.as_of = result.as_of
+    state.computed_at = datetime.now(timezone.utc)
+
+
 def get_or_recompute_knowledge_state(
     db: Session,
     *,
@@ -150,16 +163,7 @@ def get_or_recompute_knowledge_state(
         )
         db.add(state)
 
-    state.alpha = result.alpha
-    state.beta = result.beta
-    state.mastery_probability = result.mastery_probability
-    state.confidence_label = result.confidence_label
-    state.effective_n = result.effective_n
-    state.variance = result.variance
-    state.evidence_count = result.evidence_count
-    state.model_version = result.model_version
-    state.as_of = result.as_of
-    state.computed_at = datetime.now(timezone.utc)
+    _apply_result_to_state(state, result)
 
     db.commit()
     db.refresh(state)
@@ -175,15 +179,55 @@ def get_knowledge_states_for_skill(
     as_of: datetime | None = None,
 ) -> list[KnowledgeState]:
     """All five facets (§28) for one (student, skill), each computed
-    independently — see ADR-012 facet-independence assumption."""
-    return [
-        get_or_recompute_knowledge_state(
-            db,
-            tenant_id=tenant_id,
-            student_user_id=student_user_id,
-            skill_id=skill_id,
-            facet_type=facet_type,
-            as_of=as_of,
+    independently — see ADR-012 facet-independence assumption. Batched
+    (LOAD-TEST.md's diagnosed bottleneck, ADR-012 Addendum): one Skill
+    lookup, one Evidence+Observation query grouped by facet in Python, one
+    KnowledgeState query, and one commit — instead of the previous
+    per-facet loop's 5x each. `compute_knowledge_state` (the pure
+    Bayesian core) and the field-by-field upsert
+    (`_apply_result_to_state`) are exactly the same code either way, so
+    the *values* this produces are identical to the old per-facet path,
+    not merely similar — verified by
+    tests/unit/test_knowledge_state_math.py's batching-reproducibility test."""
+    if db.get(Skill, skill_id) is None:
+        raise SkillNotFound()
+
+    as_of = as_of or datetime.now(timezone.utc)
+
+    all_evidence_rows = (
+        db.query(Evidence, Observation.occurred_at)
+        .join(Observation, Evidence.observation_id == Observation.id)
+        .filter(Evidence.tenant_id == tenant_id, Evidence.student_user_id == student_user_id, Evidence.skill_id == skill_id)
+        .all()
+    )
+    rows_by_facet: dict[SkillFacetType, list[tuple[Evidence, datetime]]] = {facet: [] for facet in SkillFacetType}
+    for evidence, occurred_at in all_evidence_rows:
+        rows_by_facet[evidence.facet_type].append((evidence, occurred_at))
+
+    existing_states = {
+        state.facet_type: state
+        for state in db.query(KnowledgeState)
+        .filter(
+            KnowledgeState.tenant_id == tenant_id,
+            KnowledgeState.student_user_id == student_user_id,
+            KnowledgeState.skill_id == skill_id,
         )
-        for facet_type in SkillFacetType
-    ]
+        .all()
+    }
+
+    ordered_states: list[KnowledgeState] = []
+    for facet_type in SkillFacetType:
+        result = compute_knowledge_state(rows_by_facet[facet_type], as_of=as_of)
+        state = existing_states.get(facet_type)
+        if state is None:
+            state = KnowledgeState(
+                tenant_id=tenant_id, student_user_id=student_user_id, skill_id=skill_id, facet_type=facet_type
+            )
+            db.add(state)
+        _apply_result_to_state(state, result)
+        ordered_states.append(state)
+
+    db.commit()
+    for state in ordered_states:
+        db.refresh(state)
+    return ordered_states

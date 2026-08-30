@@ -1,7 +1,7 @@
 # Load Test Report — Phase 10 / P10
 
-Status: baseline established, real bottleneck identified and diagnosed, not
-yet fixed (§109 — measurement-driven, fixing is a separate, later change).
+Status: baseline established, bottleneck identified, diagnosed, **and
+fixed** (Roadmap Stage D) — see §7 for the real before/after measurement.
 
 ## 1. Method
 
@@ -110,22 +110,47 @@ preserving, intentional design (ADR-012's facet-independence is a
 deliberate scientific-integrity choice, not an oversight — see ADR-012),
 just not yet optimized for concurrent throughput.
 
-## 5. Recommendation (not implemented this slice — §109)
+## 5. Recommendation (implemented — see §6)
 
-If `/decisions/next-action` needs to support materially higher concurrent
-throughput than what §72's early-pilot scale requires, the next
-measurement-driven step is to profile and reduce the ~12–15 round-trips
-above — most plausibly by batching the 5 facets' Evidence+Observation
-queries into one query instead of five, then computing each facet's
-posterior from the shared result set. That is a real code change to
-`app/services/knowledge_state_service.py`, requiring its own tests
-(including a reproducibility check that batching produces bit-identical
-results to the current per-facet path — §99), and is explicitly **not**
-undertaken in this slice: this report's job was to measure and diagnose,
-not to optimize prematurely ahead of an actual pilot's real traffic
-profile.
+Profile and reduce the ~12–15 round-trips above — batch the 5 facets'
+Evidence+Observation queries into one query instead of five, then compute
+each facet's posterior from the shared result set. Implemented in
+`app/services/knowledge_state_service.py::get_knowledge_states_for_skill`
+(Roadmap Stage D), with a dedicated reproducibility test
+(`tests/unit/test_knowledge_state_batching.py`) proving the batched path
+produces bit-identical results to the original per-facet path for the same
+data — not merely similar (§99).
 
-## 6. What this load test does not cover
+## 6. After: Real Before/After Measurement (Roadmap Stage D)
+
+Same methodology as §3 exactly — 40 fresh accounts, one real skill, the
+same `asyncio.gather` burst script, same single-machine hardware — run
+again after the batching change:
+
+| Concurrent requests | Median (before) | Median (after) | Change |
+|---|---|---|---|
+| 10 | 629ms | 329ms | −48% |
+| 25 | 1063ms | 578ms | −46% |
+| 40 | 1996ms | 1018ms | −49% |
+
+Roughly a 2× reduction in latency at every concurrency level tested, zero
+failures either before or after. This is consistent with the diagnosis in
+§4: the fix collapsed the ~12–15 sequential round-trips per decision down
+to a handful (one Skill lookup, one Evidence query, one KnowledgeState
+query, one commit for the knowledge-state phase), and did not require
+touching `compute_knowledge_state` (the pure Bayesian core, ADR-012) or
+`decision_policy.py`/`authorization_service.py` at all.
+
+**Still not eliminated**: `decision_engine_service.generate_decision` has
+its own additional queries downstream of knowledge-state computation (an
+Evidence-id list query, the consent/age gate's `ParentStudentLink` lookup,
+the `Decision` insert) not touched by this change — the remaining latency
+at high concurrency is consistent with those plus normal Postgres
+contention on this session's shared hardware, not a new unexplained cost.
+Further reduction is a real, identifiable next step if a future pilot's
+traffic actually requires it — not undertaken speculatively here (§109).
+
+## 7. What this load test does not cover
 
 - Sustained load over minutes/hours (both runs here were short — 3 minutes
   paced, seconds for the concurrency bursts). Memory growth, connection
