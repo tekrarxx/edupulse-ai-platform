@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, require_role
+from app.api.deps import enforce_rate_limit, get_current_user, require_role
 from app.db.session import get_db
 from app.models.relationship import ParentStudentLink
 from app.models.user import Role, User
@@ -53,8 +53,14 @@ def get_question(question_id: str, db: Session = Depends(get_db)) -> QuestionPub
 
 @router.post("/attempts", response_model=AttemptOut, status_code=status.HTTP_201_CREATED)
 def submit_attempt(
-    payload: SubmitAttemptRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+    request: Request,
+    payload: SubmitAttemptRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ) -> AttemptOut:
+    # §78: bounds how fast one account can write attempts/observations —
+    # generous enough for genuine retrieval practice, not for a scripted flood.
+    enforce_rate_limit(request, key_prefix="assessment_attempts", limit=120, window_seconds=60, identity=current_user.id)
     try:
         attempt = assessment_service.submit_attempt(
             db, tenant_id=current_user.tenant_id, student_user_id=current_user.id, payload=payload

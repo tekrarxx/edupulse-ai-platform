@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.core.security import create_access_token, hash_password
+from app.models.audit_log import AuditLog
 from app.models.tenant import Tenant, TenantType
 from app.models.user import Role, User
 
@@ -200,3 +201,60 @@ def test_non_staff_cannot_include_shadow_in_history(client: TestClient, db: Sess
         "/decisions", params={"skill_id": skill_id, "include_shadow": True}, headers=_headers(student_token)
     )
     assert response.status_code == 403
+
+
+def test_next_action_requests_are_rate_limited_per_user(client: TestClient, db: Session, skill_id: str) -> None:
+    """§109/§139: decision generation is real compute, throttled per user."""
+    _, student_token = _seed_user(db, role=Role.STUDENT)
+
+    responses = [
+        client.post("/decisions/next-action", params={"skill_id": skill_id}, headers=_headers(student_token))
+        for _ in range(31)
+    ]
+
+    statuses = [r.status_code for r in responses]
+    assert statuses.count(201) == 30  # next-action's limit is 30/minute
+    assert 429 in statuses
+
+
+def test_escalated_decision_writes_an_audit_record(client: TestClient, db: Session, admin: tuple[User, str], skill_id: str) -> None:
+    """§85/§131: an ESCALATED (real, non-shadow) decision is an important
+    system event and must leave an audit trail, distinct from the Decision
+    row itself."""
+    _, admin_token = admin
+    student, student_token = _seed_user(db, role=Role.STUDENT)
+
+    correct_q = client.post(
+        "/assessment/questions",
+        json={"skill_id": skill_id, "facet_type": "application", "prompt": "2+2=?", "correct_answer": "4"},
+        headers=_headers(admin_token),
+    ).json()
+    client.post(
+        "/assessment/attempts",
+        json={"question_id": correct_q["id"], "assessment_type": "formative", "learner_response": "4", "idempotency_key": str(uuid.uuid4())},
+        headers=_headers(student_token),
+    )
+    wrong_q = client.post(
+        "/assessment/questions",
+        json={"skill_id": skill_id, "facet_type": "application", "prompt": "2+2=?", "correct_answer": "4"},
+        headers=_headers(admin_token),
+    ).json()
+    client.post(
+        "/assessment/attempts",
+        json={"question_id": wrong_q["id"], "assessment_type": "formative", "learner_response": "wrong", "idempotency_key": str(uuid.uuid4())},
+        headers=_headers(student_token),
+    )
+
+    decision = client.post(
+        "/decisions/next-action", params={"skill_id": skill_id}, headers=_headers(student_token)
+    ).json()
+    assert decision["authorization_result"] == "escalated"
+
+    audit_row = (
+        db.query(AuditLog)
+        .filter(AuditLog.target_id == decision["id"], AuditLog.action == "decision.escalated")
+        .first()
+    )
+    assert audit_row is not None
+    assert audit_row.actor_user_id == student.id
+    assert audit_row.tenant_id == student.tenant_id

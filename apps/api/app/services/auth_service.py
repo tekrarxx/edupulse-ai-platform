@@ -14,10 +14,10 @@ from app.core.security import (
     hash_refresh_token,
     verify_password,
 )
-from app.models.audit_log import AuditLog
 from app.models.tenant import Tenant, TenantType
 from app.models.user import Role, User, UserSession
 from app.schemas.auth import LoginRequest, RegisterRequest
+from app.services.audit_service import record_audit as _record_audit
 
 
 class AuthError(Exception):
@@ -40,18 +40,6 @@ class AccountInactive(AuthError):
 
 class SessionInvalid(AuthError):
     pass
-
-
-def _record_audit(db: Session, *, tenant_id: str, actor_user_id: str | None, action: str, target_type: str, target_id: str) -> None:
-    db.add(
-        AuditLog(
-            tenant_id=tenant_id,
-            actor_user_id=actor_user_id,
-            action=action,
-            target_type=target_type,
-            target_id=target_id,
-        )
-    )
 
 
 def register(db: Session, request: RegisterRequest) -> User:

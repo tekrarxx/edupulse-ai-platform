@@ -38,6 +38,26 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     return JSONResponse(status_code=500, content={"detail": "internal_server_error"})
 
 
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    """§78 baseline security headers. This is a JSON API, not an HTML
+    renderer, so `Content-Security-Policy: default-src 'none'` is a correct
+    default rather than a compromise — there is no first-party page here for
+    a broken policy to break. HSTS is safe to always send even from plain
+    HTTP in local development: browsers only start enforcing it after they
+    have seen it once over a real HTTPS connection, so it does nothing until
+    a production deployment actually serves over TLS (§120 cloud migration:
+    an infra concern, not an application-logic branch on environment)."""
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+    response.headers["Content-Security-Policy"] = "default-src 'none'"
+    response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
+    return response
+
+
 app.include_router(health_router, tags=["health"])
 app.include_router(auth_router, tags=["auth"])
 app.include_router(curriculum_router, tags=["curriculum"])

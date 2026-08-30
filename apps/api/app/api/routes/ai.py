@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.ai import gateway as ai_gateway
-from app.api.deps import get_ai_gateway, get_current_user
+from app.api.deps import enforce_rate_limit, get_ai_gateway, get_current_user
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.ai import ExplanationRequest, ExplanationResponse
@@ -13,6 +13,7 @@ router = APIRouter(prefix="/ai")
 
 @router.post("/explanations", response_model=ExplanationResponse)
 def create_explanation(
+    request: Request,
     payload: ExplanationRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -21,6 +22,9 @@ def create_explanation(
     """No role restriction — any authenticated tenant member, including
     STUDENT, may request an explanation (ADR-015 §6: no review-gate in this
     slice)."""
+    # §48/§139: every call here reaches a real LLM provider — rate-limited
+    # per user so a runaway client cannot generate unbounded AI cost.
+    enforce_rate_limit(request, key_prefix="ai_explanations", limit=20, window_seconds=60, identity=current_user.id)
     try:
         return explanation_service.generate_skill_explanation(
             db,

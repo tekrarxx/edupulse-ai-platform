@@ -133,3 +133,16 @@ def test_successful_call_persists_usage_record(client: TestClient, db: Session, 
     assert records[0].success is True
     assert records[0].capability.value == "skill_explanation"
     assert records[0].tenant_id == student.tenant_id
+
+
+def test_explanation_requests_are_rate_limited_per_user(client: TestClient, db: Session, skill_id: str, override_ai_provider) -> None:
+    """§48/§139: the AI Gateway is a real cost center — a single account
+    must not be able to generate unbounded LLM calls."""
+    override_ai_provider(_FakeProvider([_VALID_JSON] * 20))
+    _, student_token = _seed_user(db, role=Role.STUDENT)
+
+    responses = [client.post("/ai/explanations", json={"skill_id": skill_id}, headers=_headers(student_token)) for _ in range(21)]
+
+    statuses = [r.status_code for r in responses]
+    assert statuses.count(200) == 20  # explanations' limit is 20/minute
+    assert 429 in statuses

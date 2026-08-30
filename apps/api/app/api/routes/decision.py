@@ -1,9 +1,9 @@
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user
+from app.api.deps import enforce_rate_limit, get_current_user
 from app.db.session import get_db
 from app.models.decision import Decision
 from app.models.relationship import ParentStudentLink
@@ -61,12 +61,18 @@ def _resolve_is_shadow(*, current_user: User, mode: Literal["live", "shadow"] | 
 
 @router.post("/next-action", response_model=DecisionOut, status_code=status.HTTP_201_CREATED)
 def request_next_action(
+    request: Request,
     skill_id: str = Query(...),
     student_id: str | None = Query(default=None),
     mode: Literal["live", "shadow"] | None = Query(default=None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> DecisionOut:
+    # §139/§109: decision generation recomputes knowledge state and runs the
+    # full scoring pass — real compute cost, not free, so it gets the same
+    # per-user throttle as the AI Gateway.
+    enforce_rate_limit(request, key_prefix="decisions_next_action", limit=30, window_seconds=60, identity=current_user.id)
+
     target_student_id = _resolve_target_student_id(current_user=current_user, student_id=student_id, db=db)
     is_shadow = _resolve_is_shadow(current_user=current_user, mode=mode, db=db)
 
@@ -77,6 +83,7 @@ def request_next_action(
             student_user_id=target_student_id,
             skill_id=skill_id,
             is_shadow=is_shadow,
+            requesting_user_id=current_user.id,
         )
     except decision_engine_service.SkillNotFound:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="skill_not_found")

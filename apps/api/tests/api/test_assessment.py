@@ -335,3 +335,26 @@ def test_teacher_can_see_all_tenant_evidence(client: TestClient, db: Session, qu
     evidence = client.get("/assessment/evidence", headers=_headers(teacher_token)).json()
     assert len(evidence) == 1
     assert evidence[0]["student_user_id"] == student.id
+
+
+def test_attempt_submissions_are_rate_limited_per_user(client: TestClient, db: Session, question_id: str) -> None:
+    """§78: bounds how fast one account can write attempts."""
+    _, student_token = _seed_user(db, role=Role.STUDENT)
+
+    responses = [
+        client.post(
+            "/assessment/attempts",
+            json={
+                "question_id": question_id,
+                "assessment_type": "formative",
+                "learner_response": "4",
+                "idempotency_key": str(uuid.uuid4()),
+            },
+            headers=_headers(student_token),
+        )
+        for _ in range(121)
+    ]
+
+    statuses = [r.status_code for r in responses]
+    assert statuses.count(201) == 120  # attempts' limit is 120/minute
+    assert 429 in statuses

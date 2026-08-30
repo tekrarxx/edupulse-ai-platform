@@ -75,13 +75,22 @@ def get_ai_gateway(provider: AIProvider = Depends(get_ai_provider), db: Session 
     return AIGateway(provider=provider, db=db)
 
 
-def enforce_rate_limit(request: Request, *, key_prefix: str, limit: int, window_seconds: int) -> None:
+def enforce_rate_limit(
+    request: Request, *, key_prefix: str, limit: int, window_seconds: int, identity: str | None = None
+) -> None:
     """Fixed-window limiter backed by Redis (§78). Fails open (does not block
     the request) if Redis is unreachable — availability of auth must not
-    depend on a cache being up, but the failure is logged so it is visible."""
+    depend on a cache being up, but the failure is logged so it is visible.
+
+    `identity` keys the limit to an authenticated user (pass `current_user.id`)
+    rather than the request's source IP — important for endpoints reached
+    from a shared school/NAT IP, where an IP-keyed limit would let one
+    misbehaving student throttle the whole building. The unauthenticated
+    auth endpoints (register/login/refresh) have no user yet, so they still
+    key by IP."""
     settings = get_settings()
-    client_ip = request.client.host if request.client else "unknown"
-    key = f"ratelimit:{key_prefix}:{client_ip}"
+    subject = identity or (request.client.host if request.client else "unknown")
+    key = f"ratelimit:{key_prefix}:{subject}"
 
     try:
         redis_client = Redis.from_url(settings.redis_url, socket_connect_timeout=2)

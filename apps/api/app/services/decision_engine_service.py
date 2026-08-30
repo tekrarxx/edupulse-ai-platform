@@ -10,9 +10,10 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from app.models.curriculum import Skill, SkillFacetType
-from app.models.decision import Decision
+from app.models.decision import AuthorizationResult, Decision
 from app.models.evidence import Evidence
 from app.services import decision_policy, knowledge_state_service
+from app.services.audit_service import record_audit
 from app.services.authorization_service import authorize
 from app.services.decision_policy import FacetInput
 
@@ -35,6 +36,7 @@ def generate_decision(
     skill_id: str,
     is_shadow: bool,
     as_of: datetime | None = None,
+    requesting_user_id: str | None = None,
 ) -> Decision:
     if db.get(Skill, skill_id) is None:
         raise SkillNotFound()
@@ -96,6 +98,23 @@ def generate_decision(
         is_shadow=is_shadow,
     )
     db.add(decision)
+    db.flush()
+
+    # §85/§131: an ESCALATED decision is Prometheus saying "a human should
+    # look at this" — a real (non-shadow) escalation is exactly the kind of
+    # "important decision" §131 asks to be auditable, distinct from
+    # AIUsageRecord (AI cost/reliability accounting) and from Decision's own
+    # append-only row (the full explainable trace already lives there).
+    if not is_shadow and authorization_result == AuthorizationResult.ESCALATED:
+        record_audit(
+            db,
+            tenant_id=tenant_id,
+            actor_user_id=requesting_user_id,
+            action="decision.escalated",
+            target_type="decision",
+            target_id=decision.id,
+        )
+
     db.commit()
     db.refresh(decision)
     return decision
