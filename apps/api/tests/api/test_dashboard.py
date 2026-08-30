@@ -373,3 +373,60 @@ def test_admin_cannot_access_teacher_dashboard(client: TestClient, db: Session, 
     _, admin_token = _seed_user(db, role=Role.SUPER_ADMIN, tenant=tenant)
     response = client.get("/dashboard/teacher", headers=_headers(admin_token))
     assert response.status_code == 403
+
+
+# --- Admin dashboard (Section 77) ---
+
+
+def test_admin_dashboard_shows_tenant_wide_counts(
+    client: TestClient, db: Session, admin: tuple[User, str], tenant: Tenant, skill_id: str
+) -> None:
+    _, admin_token = admin
+    student_a, student_a_token = _seed_user(db, role=Role.STUDENT, tenant=tenant)
+    _seed_user(db, role=Role.STUDENT, tenant=tenant)  # student_b: no activity
+    _seed_user(db, role=Role.TEACHER, tenant=tenant)
+
+    for _ in range(5):
+        q = _create_application_question(client, admin_token, skill_id)
+        _answer(client, student_a_token, q, "wrong")
+
+    response = client.get("/dashboard/admin", headers=_headers(admin_token))
+    assert response.status_code == 200
+    body = response.json()
+
+    assert body["tenant_id"] == tenant.id
+    assert body["active_student_count"] == 2
+    assert body["active_teacher_count"] == 1
+    assert body["weak_skill_student_count"] == 1
+    assert body["students_needing_attention_count"] == 1
+    assert "subscription" not in body
+
+
+def test_admin_dashboard_is_tenant_scoped(
+    client: TestClient, db: Session, admin: tuple[User, str], tenant: Tenant
+) -> None:
+    """§52: activity in another tenant must never leak into this tenant's counts."""
+    _, admin_token = admin
+    _seed_user(db, role=Role.STUDENT)  # different tenant entirely
+
+    response = client.get("/dashboard/admin", headers=_headers(admin_token))
+    body = response.json()
+    assert body["active_student_count"] == 0
+
+
+def test_student_cannot_access_admin_dashboard(client: TestClient, db: Session, tenant: Tenant) -> None:
+    _, student_token = _seed_user(db, role=Role.STUDENT, tenant=tenant)
+    response = client.get("/dashboard/admin", headers=_headers(student_token))
+    assert response.status_code == 403
+
+
+def test_teacher_cannot_access_admin_dashboard(client: TestClient, db: Session, tenant: Tenant) -> None:
+    _, teacher_token = _seed_user(db, role=Role.TEACHER, tenant=tenant)
+    response = client.get("/dashboard/admin", headers=_headers(teacher_token))
+    assert response.status_code == 403
+
+
+def test_school_admin_can_access_admin_dashboard(client: TestClient, db: Session, tenant: Tenant) -> None:
+    _, school_admin_token = _seed_user(db, role=Role.SCHOOL_ADMIN, tenant=tenant)
+    response = client.get("/dashboard/admin", headers=_headers(school_admin_token))
+    assert response.status_code == 200

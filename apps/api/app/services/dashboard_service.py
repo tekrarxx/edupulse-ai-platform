@@ -20,13 +20,14 @@ from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
 
+from app.models.ai_usage import AIUsageRecord
 from app.models.curriculum import Skill, SkillFacetType
 from app.models.decision import AuthorizationResult, CandidateActionType, Decision
 from app.models.evidence import Evidence, FailureMode
 from app.models.knowledge_state import ConfidenceLabel, KnowledgeState
 from app.models.relationship import TeacherStudentLink
 from app.models.retention import Hypothesis, HypothesisVerdict, RetentionCheckpoint, RetentionCheckpointStatus
-from app.models.user import User
+from app.models.user import Role, User
 
 _ACTION_LABELS: dict[CandidateActionType, str] = {
     CandidateActionType.INSUFFICIENT_EVIDENCE_ACTION: "Bilgini ölçmek için birkaç soru çöz",
@@ -319,4 +320,97 @@ def get_teacher_dashboard(db: Session, *, tenant_id: str, teacher_user_id: str) 
     return TeacherDashboard(
         students=summaries,
         students_needing_attention_count=sum(1 for s in summaries if s.needs_attention),
+    )
+
+
+# --- Admin dashboard (§77) ---
+#
+# Tenant-wide, not per-teacher-linked-students-only (that's the Teacher
+# Dashboard above). §80 "do not expose unnecessary sensitive learner
+# information" is honored by reporting *counts* only — no per-student names
+# or reasons at this level, unlike the Teacher Dashboard which a teacher
+# legitimately needs for individual intervention.
+#
+# §77 also asks for "subscription" — Plan/Subscription/Entitlement (§59-§61)
+# do not exist in this codebase yet (that's a later phase), so this
+# dashboard deliberately has no subscription field rather than fabricating
+# one (§105 "No Fake Implementations"). The same applies to "adoption" in
+# the multi-tenant-benchmarking sense — this reports this tenant's own
+# activity only, not a cross-tenant comparison.
+#
+# "system health" here means the AI Gateway's own accounting (§45, §65,
+# ADR-015) — the only subsystem in this codebase that can fail against an
+# external dependency (Ollama) and record it. There is no separate
+# infrastructure-health check (DB/Redis probes) in this phase; that belongs
+# to §83 Observability, not this read-model.
+
+
+@dataclass(frozen=True)
+class AdminDashboard:
+    tenant_id: str
+    active_student_count: int
+    active_teacher_count: int
+    students_needing_attention_count: int
+    weak_skill_student_count: int
+    forgetting_student_count: int
+    misconception_student_count: int
+    escalated_student_count: int
+    retention_pending_count: int
+    retention_supported_count: int
+    retention_not_supported_count: int
+    retention_inconclusive_count: int
+    decisions_total_count: int
+    decisions_allowed_count: int
+    decisions_escalated_count: int
+    decisions_rejected_count: int
+    ai_requests_total_count: int
+    ai_requests_success_count: int
+    ai_requests_failed_count: int
+
+
+def get_admin_dashboard(db: Session, *, tenant_id: str) -> AdminDashboard:
+    students = db.query(User).filter(User.tenant_id == tenant_id, User.role == Role.STUDENT).all()
+    active_student_count = sum(1 for s in students if s.is_active)
+    active_teacher_count = (
+        db.query(User).filter(User.tenant_id == tenant_id, User.role == Role.TEACHER, User.is_active.is_(True)).count()
+    )
+
+    summaries = [_summarize_student(db, tenant_id=tenant_id, student=student) for student in students]
+
+    checkpoints = db.query(RetentionCheckpoint).filter(RetentionCheckpoint.tenant_id == tenant_id).all()
+    retention_pending_count = sum(1 for c in checkpoints if c.status == RetentionCheckpointStatus.PENDING)
+
+    hypotheses = db.query(Hypothesis).filter(Hypothesis.tenant_id == tenant_id).all()
+    retention_supported_count = sum(1 for h in hypotheses if h.verdict == HypothesisVerdict.SUPPORTED)
+    retention_not_supported_count = sum(1 for h in hypotheses if h.verdict == HypothesisVerdict.NOT_SUPPORTED)
+    retention_inconclusive_count = sum(1 for h in hypotheses if h.verdict == HypothesisVerdict.INCONCLUSIVE)
+
+    decisions = db.query(Decision).filter(Decision.tenant_id == tenant_id, Decision.is_shadow.is_(False)).all()
+    decisions_allowed_count = sum(1 for d in decisions if d.authorization_result == AuthorizationResult.ALLOWED)
+    decisions_escalated_count = sum(1 for d in decisions if d.authorization_result == AuthorizationResult.ESCALATED)
+    decisions_rejected_count = sum(1 for d in decisions if d.authorization_result == AuthorizationResult.REJECTED)
+
+    ai_records = db.query(AIUsageRecord).filter(AIUsageRecord.tenant_id == tenant_id).all()
+    ai_requests_success_count = sum(1 for r in ai_records if r.success)
+
+    return AdminDashboard(
+        tenant_id=tenant_id,
+        active_student_count=active_student_count,
+        active_teacher_count=active_teacher_count,
+        students_needing_attention_count=sum(1 for s in summaries if s.needs_attention),
+        weak_skill_student_count=sum(1 for s in summaries if s.weak_skill_names),
+        forgetting_student_count=sum(1 for s in summaries if s.forgetting_skill_names),
+        misconception_student_count=sum(1 for s in summaries if s.misconception_skill_names),
+        escalated_student_count=sum(1 for s in summaries if "Sistem öğretmen incelemesi öneriyor" in s.attention_reasons),
+        retention_pending_count=retention_pending_count,
+        retention_supported_count=retention_supported_count,
+        retention_not_supported_count=retention_not_supported_count,
+        retention_inconclusive_count=retention_inconclusive_count,
+        decisions_total_count=len(decisions),
+        decisions_allowed_count=decisions_allowed_count,
+        decisions_escalated_count=decisions_escalated_count,
+        decisions_rejected_count=decisions_rejected_count,
+        ai_requests_total_count=len(ai_records),
+        ai_requests_success_count=ai_requests_success_count,
+        ai_requests_failed_count=len(ai_records) - ai_requests_success_count,
     )

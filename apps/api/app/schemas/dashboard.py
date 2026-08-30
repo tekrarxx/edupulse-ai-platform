@@ -42,3 +42,29 @@ class StudentSummaryOut(BaseModel):
 class TeacherDashboardOut(BaseModel):
     students: list[StudentSummaryOut]
     students_needing_attention_count: int
+
+
+class AdminDashboardOut(BaseModel):
+    """§77. Tenant-wide counts only — no per-student names (§80). No
+    subscription/billing field: that domain (§59-§61) is not implemented
+    yet, so it is omitted rather than faked (§105)."""
+
+    tenant_id: str
+    active_student_count: int
+    active_teacher_count: int
+    students_needing_attention_count: int
+    weak_skill_student_count: int
+    forgetting_student_count: int
+    misconception_student_count: int
+    escalated_student_count: int
+    retention_pending_count: int
+    retention_supported_count: int
+    retention_not_supported_count: int
+    retention_inconclusive_count: int
+    decisions_total_count: int
+    decisions_allowed_count: int
+    decisions_escalated_count: int
+    decisions_rejected_count: int
+    ai_requests_total_count: int
+    ai_requests_success_count: int
+    ai_requests_failed_count: int

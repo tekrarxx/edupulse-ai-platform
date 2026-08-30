@@ -49,6 +49,20 @@ describe("DashboardPage", () => {
     expect(fetchStudentDashboardMock).not.toHaveBeenCalled();
   });
 
+  it("redirects a SUPER_ADMIN to the admin dashboard instead of rendering the student view", () => {
+    useAuthMock.mockReturnValue({
+      user: { id: "a1", tenant_id: "t1", email: "adm@example.com", display_name: "Yönetici", role: "SUPER_ADMIN", is_active: true },
+      accessToken: "fake-token",
+      status: "authenticated",
+      logout: logoutMock,
+    });
+
+    render(<DashboardPage />);
+
+    expect(replaceMock).toHaveBeenCalledWith("/dashboard/admin");
+    expect(fetchStudentDashboardMock).not.toHaveBeenCalled();
+  });
+
   it("renders skill progress using only plain-language labels, never a raw score", async () => {
     fetchStudentDashboardMock.mockResolvedValueOnce({
       student_user_id: "u1",

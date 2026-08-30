@@ -58,3 +58,35 @@ export async function fetchTeacherDashboard(accessToken: string): Promise<Teache
   }
   return response.json();
 }
+
+export type AdminDashboard = {
+  tenant_id: string;
+  active_student_count: number;
+  active_teacher_count: number;
+  students_needing_attention_count: number;
+  weak_skill_student_count: number;
+  forgetting_student_count: number;
+  misconception_student_count: number;
+  escalated_student_count: number;
+  retention_pending_count: number;
+  retention_supported_count: number;
+  retention_not_supported_count: number;
+  retention_inconclusive_count: number;
+  decisions_total_count: number;
+  decisions_allowed_count: number;
+  decisions_escalated_count: number;
+  decisions_rejected_count: number;
+  ai_requests_total_count: number;
+  ai_requests_success_count: number;
+  ai_requests_failed_count: number;
+};
+
+export async function fetchAdminDashboard(accessToken: string): Promise<AdminDashboard> {
+  const response = await fetch(`${API_URL}/dashboard/admin`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!response.ok) {
+    throw new Error(`admin dashboard request failed with status ${response.status}`);
+  }
+  return response.json();
+}

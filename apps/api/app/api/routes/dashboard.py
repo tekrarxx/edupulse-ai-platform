@@ -5,7 +5,7 @@ from app.api.deps import get_current_user, require_role
 from app.db.session import get_db
 from app.models.relationship import ParentStudentLink
 from app.models.user import Role, User
-from app.schemas.dashboard import StudentDashboardOut, StudentSummaryOut, TeacherDashboardOut
+from app.schemas.dashboard import AdminDashboardOut, StudentDashboardOut, StudentSummaryOut, TeacherDashboardOut
 from app.services import dashboard_service
 
 router = APIRouter(prefix="/dashboard")
@@ -95,4 +95,35 @@ def get_teacher_dashboard(current_user: User = Depends(get_current_user), db: Se
             for s in dashboard.students
         ],
         students_needing_attention_count=dashboard.students_needing_attention_count,
+    )
+
+
+_admin_access = Depends(require_role(Role.SCHOOL_ADMIN, Role.TENANT_ADMIN, Role.SUPER_ADMIN))
+
+
+@router.get("/admin", response_model=AdminDashboardOut, dependencies=[_admin_access])
+def get_admin_dashboard(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> AdminDashboardOut:
+    """§77. Tenant-wide aggregate view for school/tenant admins — counts
+    only, never per-student names (§80)."""
+    dashboard = dashboard_service.get_admin_dashboard(db, tenant_id=current_user.tenant_id)
+    return AdminDashboardOut(
+        tenant_id=dashboard.tenant_id,
+        active_student_count=dashboard.active_student_count,
+        active_teacher_count=dashboard.active_teacher_count,
+        students_needing_attention_count=dashboard.students_needing_attention_count,
+        weak_skill_student_count=dashboard.weak_skill_student_count,
+        forgetting_student_count=dashboard.forgetting_student_count,
+        misconception_student_count=dashboard.misconception_student_count,
+        escalated_student_count=dashboard.escalated_student_count,
+        retention_pending_count=dashboard.retention_pending_count,
+        retention_supported_count=dashboard.retention_supported_count,
+        retention_not_supported_count=dashboard.retention_not_supported_count,
+        retention_inconclusive_count=dashboard.retention_inconclusive_count,
+        decisions_total_count=dashboard.decisions_total_count,
+        decisions_allowed_count=dashboard.decisions_allowed_count,
+        decisions_escalated_count=dashboard.decisions_escalated_count,
+        decisions_rejected_count=dashboard.decisions_rejected_count,
+        ai_requests_total_count=dashboard.ai_requests_total_count,
+        ai_requests_success_count=dashboard.ai_requests_success_count,
+        ai_requests_failed_count=dashboard.ai_requests_failed_count,
     )

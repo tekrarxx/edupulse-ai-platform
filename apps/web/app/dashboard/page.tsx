@@ -6,6 +6,8 @@ import { useAuth } from "@/lib/auth-context";
 import { fetchStudentDashboard, type StudentDashboard } from "@/lib/dashboard";
 import { SkillProgressCard } from "@/components/skill-progress-card";
 
+const _ADMIN_ROLES = new Set(["SCHOOL_ADMIN", "TENANT_ADMIN", "SUPER_ADMIN"]);
+
 export default function DashboardPage() {
   const { user, accessToken, status, logout } = useAuth();
   const router = useRouter();
@@ -19,18 +21,21 @@ export default function DashboardPage() {
       // This route renders the student view; a teacher has their own
       // aggregate page (§76) rather than a single-student one.
       router.replace("/dashboard/teacher");
+    } else if (status === "authenticated" && user && _ADMIN_ROLES.has(user.role)) {
+      // Tenant/school/super admins have their own aggregate page (§77).
+      router.replace("/dashboard/admin");
     }
   }, [status, user, router]);
 
   useEffect(() => {
-    if (status === "authenticated" && accessToken && user?.role !== "TEACHER") {
+    if (status === "authenticated" && accessToken && user?.role !== "TEACHER" && user && !_ADMIN_ROLES.has(user.role)) {
       fetchStudentDashboard(accessToken)
         .then(setDashboard)
         .catch(() => setError("Panonuz yüklenirken bir sorun oluştu."));
     }
   }, [status, accessToken, user]);
 
-  if (status !== "authenticated" || !user || user.role === "TEACHER") {
+  if (status !== "authenticated" || !user || user.role === "TEACHER" || _ADMIN_ROLES.has(user.role)) {
     return null;
   }
 
