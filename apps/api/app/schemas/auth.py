@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
@@ -15,6 +15,10 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=_MIN_PASSWORD_LENGTH, max_length=200)
     display_name: str = Field(min_length=1, max_length=200)
+    # §81 optional at signup — a self-registering B2C user may choose not to
+    # share it. When absent, authorization_service treats the student's age
+    # as unknown, never as an assumed adult (§105).
+    date_of_birth: date | None = None
 
     @field_validator("password")
     @classmethod
@@ -36,8 +40,13 @@ class UserOut(BaseModel):
     display_name: str
     role: Role
     is_active: bool
+    date_of_birth: date | None
 
     model_config = {"from_attributes": True}
+
+
+class SetDateOfBirthRequest(BaseModel):
+    date_of_birth: date
 
 
 class TokenResponse(BaseModel):

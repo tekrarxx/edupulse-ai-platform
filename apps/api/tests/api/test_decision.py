@@ -258,3 +258,79 @@ def test_escalated_decision_writes_an_audit_record(client: TestClient, db: Sessi
     assert audit_row is not None
     assert audit_row.actor_user_id == student.id
     assert audit_row.tenant_id == student.tenant_id
+
+
+# --- §81 consent/age gate, end to end ---
+
+
+def test_minor_student_without_consent_gets_escalated_decision(client: TestClient, db: Session, skill_id: str) -> None:
+    from datetime import date
+
+    tenant = Tenant(name="Minor Tenant", tenant_type=TenantType.SCHOOL)
+    db.add(tenant)
+    db.flush()
+    db.commit()
+    student, student_token = _seed_user(db, role=Role.STUDENT, tenant=tenant)
+    student.date_of_birth = date(2015, 1, 1)  # a minor under any plausible "today"
+    db.commit()
+
+    response = client.post("/decisions/next-action", params={"skill_id": skill_id}, headers=_headers(student_token))
+    assert response.status_code == 201
+    body = response.json()
+    assert body["authorization_result"] == "escalated"
+    assert body["authorization_reason"] == "minor_without_guardian_consent"
+
+    audit_row = (
+        db.query(AuditLog).filter(AuditLog.target_id == body["id"], AuditLog.action == "decision.escalated").first()
+    )
+    assert audit_row is not None
+
+
+def test_minor_student_with_guardian_consent_is_not_escalated_by_the_consent_gate(
+    client: TestClient, db: Session, skill_id: str
+) -> None:
+    from datetime import date, datetime, timezone
+
+    from app.models.relationship import ParentStudentLink
+
+    tenant = Tenant(name="Consented Tenant", tenant_type=TenantType.SCHOOL)
+    db.add(tenant)
+    db.flush()
+    db.commit()
+    student, student_token = _seed_user(db, role=Role.STUDENT, tenant=tenant)
+    student.date_of_birth = date(2015, 1, 1)
+    parent, _ = _seed_user(db, role=Role.PARENT, tenant=tenant)
+    db.add(
+        ParentStudentLink(
+            tenant_id=tenant.id,
+            parent_user_id=parent.id,
+            student_user_id=student.id,
+            consent_given_at=datetime.now(timezone.utc),
+        )
+    )
+    db.commit()
+
+    response = client.post("/decisions/next-action", params={"skill_id": skill_id}, headers=_headers(student_token))
+    assert response.status_code == 201
+    body = response.json()
+    # An evidence-free skill's own top action is insufficient_evidence_action,
+    # unaffected by the personalization or consent gates either way — the
+    # assertion here is only that consent lifted the ESCALATED-by-minority
+    # outcome the previous test demonstrated, not a claim about which action wins.
+    assert body["authorization_result"] == "allowed"
+
+
+def test_adult_student_with_recorded_date_of_birth_is_not_gated(client: TestClient, db: Session, skill_id: str) -> None:
+    from datetime import date
+
+    tenant = Tenant(name="Adult Tenant", tenant_type=TenantType.SCHOOL)
+    db.add(tenant)
+    db.flush()
+    db.commit()
+    student, student_token = _seed_user(db, role=Role.STUDENT, tenant=tenant)
+    student.date_of_birth = date(1990, 1, 1)
+    db.commit()
+
+    response = client.post("/decisions/next-action", params={"skill_id": skill_id}, headers=_headers(student_token))
+    assert response.status_code == 201
+    assert response.json()["authorization_result"] == "allowed"

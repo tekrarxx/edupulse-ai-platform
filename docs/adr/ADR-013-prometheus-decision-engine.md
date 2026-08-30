@@ -275,3 +275,48 @@ identical inputs always yield identical output (§99), verified directly
   `is_shadow = true` decisions that are excluded from the default
   `GET /decisions` history.
 - Cross-tenant negative tests (§52) on all three `/decisions` endpoints.
+
+## Addendum (Phase 10, 2026-08-30): Consent/Age-Based Authorization
+
+The Consequences section above flagged authorization's missing role/consent/
+age checks as something to revisit "before this system is used with real
+minors at scale." This addendum closes the age/consent half of that gap
+(role- and tenant-education-policy-based checks remain open — no such policy
+data model exists yet).
+
+**What changed.** `User.date_of_birth` (nullable) and
+`ParentStudentLink.consent_given_at` (nullable) were added (migration 0009,
+purely additive, no backfill — §107). `authorization_service.authorize()`
+gained a third rule: a student under 18 with no `ParentStudentLink` row
+carrying a non-null `consent_given_at` has every otherwise-`ALLOWED` action
+escalated to `ESCALATED` instead. The existing two rules (teacher-
+intervention escalation, insufficient-confidence rejection) still take
+precedence — the consent gate only intercepts what would otherwise have
+been allowed to auto-execute.
+
+**How consent is recorded.** Two new staff-only endpoints
+(`POST /auth/tenant/users/{id}/date-of-birth`,
+`POST /auth/tenant/parent-links`) let a `TENANT_ADMIN`/`SCHOOL_ADMIN`/
+`SUPER_ADMIN` record facts already established through an external,
+out-of-band process (a signed enrollment form, a phone call) — the
+endpoints are an attestation, not a consent-collection UX. A self-service
+parent-initiated flow is still deferred, unchanged from the original
+`app/models/relationship.py` scope note.
+
+**The unknown-age default.** A `null` `date_of_birth` is treated as "cannot
+verify minor status," never as an assumed adult or an assumed minor — §105
+forbids fabricating a fact the system does not have. This is a deliberate,
+documented trade-off: it means the consent gate protects only students
+whose age has actually been recorded, and every student who existed before
+this migration (or who self-registered without supplying it) is unprotected
+by this specific gate until an admin records their date of birth. This is
+the same "safe to defer, but time-boxed" posture the MVP Gate report
+(`docs/audit/MVP-GATE.md`) already used for this exact gap — closing the
+code path was the prerequisite; populating real dates of birth for a real
+student population is an operational rollout step for the next pilot, not
+a code change.
+
+**Falsifiability check.** This is not a Prometheus *scoring* change (§98's
+mathematical-formulation process does not apply — `decision_policy.py` and
+its `score_candidates` output are untouched); it is an authorization-layer
+policy change (§37), reviewed under §134's ordinary priority rules instead.

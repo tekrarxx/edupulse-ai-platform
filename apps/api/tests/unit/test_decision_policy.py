@@ -167,3 +167,55 @@ def test_ordinary_action_is_allowed() -> None:
         selected_action=CandidateActionType.EASIER_TASK, primary_facet_confidence_label=_HIGH
     )
     assert result == AuthorizationResult.ALLOWED
+
+
+# --- §81 consent/age gate ---
+
+
+def test_minor_without_consent_escalates_an_otherwise_allowed_action() -> None:
+    from app.models.decision import AuthorizationResult
+
+    result, reason = authorization_service.authorize(
+        selected_action=CandidateActionType.EASIER_TASK,
+        primary_facet_confidence_label=_HIGH,
+        is_minor=True,
+        has_guardian_consent=False,
+    )
+    assert result == AuthorizationResult.ESCALATED
+    assert reason == "minor_without_guardian_consent"
+
+
+def test_minor_with_consent_is_allowed() -> None:
+    from app.models.decision import AuthorizationResult
+
+    result, reason = authorization_service.authorize(
+        selected_action=CandidateActionType.EASIER_TASK,
+        primary_facet_confidence_label=_HIGH,
+        is_minor=True,
+        has_guardian_consent=True,
+    )
+    assert result == AuthorizationResult.ALLOWED
+
+
+def test_unknown_age_defaults_to_not_minor() -> None:
+    """§105: the default (is_minor unset) must never gate a decision on a
+    fact the caller did not assert."""
+    from app.models.decision import AuthorizationResult
+
+    result, _ = authorization_service.authorize(selected_action=CandidateActionType.EASIER_TASK, primary_facet_confidence_label=_HIGH)
+    assert result == AuthorizationResult.ALLOWED
+
+
+def test_teacher_intervention_still_takes_precedence_over_consent_gate() -> None:
+    """The escalation reason for an already-escalating action must not be
+    silently overwritten by the consent check."""
+    from app.models.decision import AuthorizationResult
+
+    result, reason = authorization_service.authorize(
+        selected_action=CandidateActionType.TEACHER_INTERVENTION,
+        primary_facet_confidence_label=_HIGH,
+        is_minor=True,
+        has_guardian_consent=False,
+    )
+    assert result == AuthorizationResult.ESCALATED
+    assert reason == "action_requires_human_review"

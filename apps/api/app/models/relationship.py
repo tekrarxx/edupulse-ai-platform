@@ -1,10 +1,14 @@
 """Parent-student and teacher-student links (§81 minor safety).
 
-Only the data model lands in this phase — enough that the schema does not
-need retrofitting once invite/consent flows exist. The invite UX, consent
-capture, and management API are deliberately deferred (§114): building a full
-relationship-management surface before there are curriculum/assessment
-entities for it to be useful against would be scope creep ahead of need.
+`ParentStudentLink.consent_given_at` and the staff-only
+`POST /auth/tenant/parent-links` endpoint (Phase 10) close the "consent data
+model does not exist yet" gap `authorization_service.py` used to document —
+an admin records that consent was obtained through some external,
+already-verified process (a signed form, a phone call, an in-person
+enrollment conversation), the same way a real school's office handles it.
+A self-service parent-initiated invite/consent UX is still deliberately
+deferred (§114): building a full relationship-management surface before a
+pilot needs it would be scope creep ahead of need.
 """
 from datetime import datetime
 
@@ -23,6 +27,11 @@ class ParentStudentLink(Base):
     tenant_id: Mapped[str] = uuid_fk("tenants.id")
     parent_user_id: Mapped[str] = uuid_fk("users.id")
     student_user_id: Mapped[str] = uuid_fk("users.id")
+    # Null = link exists but consent has not been recorded yet. Set once, at
+    # creation or via a later grant — never cleared by application code
+    # (a withdrawal is a policy decision this phase does not implement, not
+    # a silent field reset).
+    consent_given_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 

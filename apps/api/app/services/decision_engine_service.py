@@ -12,12 +12,15 @@ from sqlalchemy.orm import Session
 from app.models.curriculum import Skill, SkillFacetType
 from app.models.decision import AuthorizationResult, Decision
 from app.models.evidence import Evidence
+from app.models.relationship import ParentStudentLink
+from app.models.user import User
 from app.services import decision_policy, knowledge_state_service
 from app.services.audit_service import record_audit
 from app.services.authorization_service import authorize
 from app.services.decision_policy import FacetInput
 
 MODEL_VERSION = knowledge_state_service.MODEL_VERSION
+_MAJORITY_AGE_YEARS = 18
 
 
 class DecisionEngineError(Exception):
@@ -26,6 +29,17 @@ class DecisionEngineError(Exception):
 
 class SkillNotFound(DecisionEngineError):
     pass
+
+
+def _is_minor(date_of_birth, *, as_of: datetime) -> bool:
+    """None (unknown date of birth) is never treated as minor — §105: an
+    unrecorded fact is not evidence of anything, so it cannot trigger a
+    consent gate that assumes minor status."""
+    if date_of_birth is None:
+        return False
+    today = as_of.date()
+    age_years = today.year - date_of_birth.year - ((today.month, today.day) < (date_of_birth.month, date_of_birth.day))
+    return age_years < _MAJORITY_AGE_YEARS
 
 
 def generate_decision(
@@ -54,9 +68,25 @@ def generate_decision(
     ranked = decision_policy.score_candidates(facet_states)
     selected = ranked[0]
 
+    student = db.get(User, student_user_id)
+    is_minor = _is_minor(student.date_of_birth if student is not None else None, as_of=as_of)
+    has_guardian_consent = (
+        is_minor
+        and db.query(ParentStudentLink)
+        .filter(
+            ParentStudentLink.tenant_id == tenant_id,
+            ParentStudentLink.student_user_id == student_user_id,
+            ParentStudentLink.consent_given_at.isnot(None),
+        )
+        .first()
+        is not None
+    )
+
     authorization_result, authorization_reason = authorize(
         selected_action=selected.action,
         primary_facet_confidence_label=facet_states[SkillFacetType.APPLICATION].confidence_label,
+        is_minor=is_minor,
+        has_guardian_consent=has_guardian_consent,
     )
 
     evidence_ids = [

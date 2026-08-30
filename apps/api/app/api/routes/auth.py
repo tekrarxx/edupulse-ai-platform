@@ -7,8 +7,9 @@ from app.api.deps import enforce_rate_limit, get_current_user, require_role
 from app.core.config import get_settings
 from app.db.session import get_db
 from app.models.user import Role, User
-from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse, UserOut
-from app.services import auth_service
+from app.schemas.auth import LoginRequest, RegisterRequest, SetDateOfBirthRequest, TokenResponse, UserOut
+from app.schemas.relationship import ParentLinkCreate, ParentLinkOut
+from app.services import auth_service, relationship_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth")
@@ -104,3 +105,57 @@ def list_tenant_users(
     endpoint this phase does not build."""
     query = db.query(User).filter(User.tenant_id == current_user.tenant_id)
     return [UserOut.model_validate(u) for u in query.all()]
+
+
+_relationship_staff_access = require_role(Role.TENANT_ADMIN, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
+
+
+@router.post("/tenant/users/{user_id}/date-of-birth", response_model=UserOut)
+def set_user_date_of_birth(
+    user_id: str,
+    payload: SetDateOfBirthRequest,
+    current_user: User = Depends(_relationship_staff_access),
+    db: Session = Depends(get_db),
+) -> UserOut:
+    """§81: an admin records a student's date of birth from an already-
+    verified source (enrollment records) — used by the PDE's consent/age
+    authorization gate (app/services/authorization_service.py)."""
+    try:
+        user = relationship_service.set_date_of_birth(
+            db,
+            tenant_id=current_user.tenant_id,
+            actor_user_id=current_user.id,
+            target_user_id=user_id,
+            date_of_birth=payload.date_of_birth,
+        )
+    except relationship_service.UserNotFound:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="user_not_found")
+    return UserOut.model_validate(user)
+
+
+@router.post("/tenant/parent-links", response_model=ParentLinkOut, status_code=status.HTTP_201_CREATED)
+def create_parent_link(
+    payload: ParentLinkCreate,
+    current_user: User = Depends(_relationship_staff_access),
+    db: Session = Depends(get_db),
+) -> ParentLinkOut:
+    """§81: an admin attests that a parent-student relationship and (when
+    `consent_given=true`) guardian consent were already verified through an
+    external process — this endpoint records that fact, it does not collect
+    consent itself (see app/services/relationship_service.py)."""
+    try:
+        link = relationship_service.create_parent_link(
+            db,
+            tenant_id=current_user.tenant_id,
+            actor_user_id=current_user.id,
+            parent_user_id=payload.parent_user_id,
+            student_user_id=payload.student_user_id,
+            consent_given=payload.consent_given,
+        )
+    except relationship_service.ParentOrStudentNotFound:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="parent_or_student_not_found")
+    except relationship_service.InvalidRoleForLink:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_role_for_link")
+    except relationship_service.LinkAlreadyExists:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="link_already_exists")
+    return ParentLinkOut.model_validate(link)

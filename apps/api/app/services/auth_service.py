@@ -57,6 +57,7 @@ def register(db: Session, request: RegisterRequest) -> User:
         password_hash=hash_password(request.password),
         display_name=request.display_name,
         role=Role.STUDENT,
+        date_of_birth=request.date_of_birth,
     )
     db.add(user)
     db.flush()
