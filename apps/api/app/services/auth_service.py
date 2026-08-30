@@ -16,8 +16,19 @@ from app.core.security import (
 )
 from app.models.tenant import Tenant, TenantType
 from app.models.user import Role, User, UserSession
-from app.schemas.auth import LoginRequest, RegisterRequest
+from app.schemas.auth import CreateTenantUserRequest, LoginRequest, RegisterRequest
 from app.services.audit_service import record_audit as _record_audit
+
+# §53/§78 least-privilege creation matrix: which roles an admin of a given
+# role may create within their own tenant. SUPER_ADMIN can create any role,
+# including other admins; TENANT_ADMIN and SCHOOL_ADMIN cannot create an
+# admin role at or above their own — closes the privilege-escalation path a
+# flat "any staff role can create any role" check would leave open.
+_ROLE_CREATION_MATRIX: dict[Role, frozenset[Role]] = {
+    Role.SUPER_ADMIN: frozenset(Role),
+    Role.TENANT_ADMIN: frozenset({Role.SCHOOL_ADMIN, Role.TEACHER, Role.STUDENT, Role.PARENT}),
+    Role.SCHOOL_ADMIN: frozenset({Role.TEACHER, Role.STUDENT, Role.PARENT}),
+}
 
 
 class AuthError(Exception):
@@ -39,6 +50,10 @@ class AccountInactive(AuthError):
 
 
 class SessionInvalid(AuthError):
+    pass
+
+
+class InsufficientRoleForUserCreation(AuthError):
     pass
 
 
@@ -64,6 +79,40 @@ def register(db: Session, request: RegisterRequest) -> User:
 
     _record_audit(db, tenant_id=tenant.id, actor_user_id=user.id, action="tenant.created", target_type="tenant", target_id=tenant.id)
     _record_audit(db, tenant_id=tenant.id, actor_user_id=user.id, action="user.registered", target_type="user", target_id=user.id)
+
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def create_tenant_user(
+    db: Session, *, tenant_id: str, actor_user_id: str, actor_role: Role, request: CreateTenantUserRequest
+) -> User:
+    """Admin-initiated enrollment (the "safe to defer, but noticed" gap
+    MVP-GATE.md flagged: real schools need this before a pilot, not just
+    self-service B2C signup). Always creates the user in the *actor's own*
+    tenant_id — never a client-supplied one (§51)."""
+    if request.role not in _ROLE_CREATION_MATRIX.get(actor_role, frozenset()):
+        raise InsufficientRoleForUserCreation()
+
+    existing = db.query(User).filter(User.email == request.email).first()
+    if existing is not None:
+        raise EmailAlreadyRegistered()
+
+    user = User(
+        tenant_id=tenant_id,
+        email=request.email,
+        password_hash=hash_password(request.password),
+        display_name=request.display_name,
+        role=request.role,
+        date_of_birth=request.date_of_birth,
+    )
+    db.add(user)
+    db.flush()
+
+    _record_audit(
+        db, tenant_id=tenant_id, actor_user_id=actor_user_id, action="user.created_by_admin", target_type="user", target_id=user.id
+    )
 
     db.commit()
     db.refresh(user)

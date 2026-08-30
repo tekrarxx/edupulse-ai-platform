@@ -3,11 +3,37 @@ import uuid
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from app.core.security import create_access_token, hash_password
 from app.models.audit_log import AuditLog
+from app.models.tenant import Tenant, TenantType
+from app.models.user import Role, User
 
 
 def _unique_email() -> str:
     return f"test-{uuid.uuid4().hex}@example.com"
+
+
+def _seed_staff(db: Session, *, role: Role, tenant: Tenant | None = None) -> tuple[User, str, Tenant]:
+    if tenant is None:
+        tenant = Tenant(name=f"Tenant {uuid.uuid4().hex[:8]}", tenant_type=TenantType.SCHOOL)
+        db.add(tenant)
+        db.flush()
+    user = User(
+        tenant_id=tenant.id,
+        email=_unique_email(),
+        password_hash=hash_password("irrelevant-for-this-test"),
+        display_name="Staff User",
+        role=role,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    token, _ = create_access_token(user_id=user.id, tenant_id=user.tenant_id, role=user.role.value)
+    return user, token, tenant
+
+
+def _headers(token: str) -> dict:
+    return {"Authorization": f"Bearer {token}"}
 
 
 def _register(client: TestClient, *, email: str | None = None, password: str = "correct-horse-battery") -> dict:
@@ -146,3 +172,140 @@ def test_logout_revokes_session_so_refresh_then_fails(client: TestClient) -> Non
 
     refresh_response = client.post("/auth/refresh")
     assert refresh_response.status_code == 401
+
+
+# --- POST /auth/tenant/users: admin-initiated enrollment ---
+
+
+def test_super_admin_can_create_a_student(client: TestClient, db: Session) -> None:
+    _, token, tenant = _seed_staff(db, role=Role.SUPER_ADMIN)
+
+    response = client.post(
+        "/auth/tenant/users",
+        json={"email": _unique_email(), "password": "correct-horse-battery", "display_name": "New Student", "role": "STUDENT"},
+        headers=_headers(token),
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["role"] == "STUDENT"
+    assert body["tenant_id"] == tenant.id
+    # The created account never receives its own token in this response —
+    # this creates someone else's account, it does not sign the caller in as them.
+    assert "access_token" not in body
+
+
+def test_created_user_lands_in_the_actors_own_tenant_not_a_client_supplied_one(client: TestClient, db: Session) -> None:
+    """§51: there is no tenant_id field in the request body at all — confirms
+    the created user's tenant always comes from the caller's own token."""
+    _, token, tenant = _seed_staff(db, role=Role.SUPER_ADMIN)
+
+    response = client.post(
+        "/auth/tenant/users",
+        json={"email": _unique_email(), "password": "correct-horse-battery", "display_name": "New Teacher", "role": "TEACHER"},
+        headers=_headers(token),
+    )
+    assert response.json()["tenant_id"] == tenant.id
+
+
+def test_school_admin_cannot_create_a_tenant_admin(client: TestClient, db: Session) -> None:
+    """§53/§78 least privilege: a SCHOOL_ADMIN must not be able to create an
+    account with more authority than their own."""
+    _, token, _ = _seed_staff(db, role=Role.SCHOOL_ADMIN)
+
+    response = client.post(
+        "/auth/tenant/users",
+        json={"email": _unique_email(), "password": "correct-horse-battery", "display_name": "Escalated", "role": "TENANT_ADMIN"},
+        headers=_headers(token),
+    )
+    assert response.status_code == 403
+
+
+def test_school_admin_can_create_a_teacher(client: TestClient, db: Session) -> None:
+    _, token, _ = _seed_staff(db, role=Role.SCHOOL_ADMIN)
+
+    response = client.post(
+        "/auth/tenant/users",
+        json={"email": _unique_email(), "password": "correct-horse-battery", "display_name": "New Teacher", "role": "TEACHER"},
+        headers=_headers(token),
+    )
+    assert response.status_code == 201
+
+
+def test_tenant_admin_cannot_create_a_super_admin(client: TestClient, db: Session) -> None:
+    _, token, _ = _seed_staff(db, role=Role.TENANT_ADMIN)
+
+    response = client.post(
+        "/auth/tenant/users",
+        json={"email": _unique_email(), "password": "correct-horse-battery", "display_name": "Escalated", "role": "SUPER_ADMIN"},
+        headers=_headers(token),
+    )
+    assert response.status_code == 403
+
+
+def test_duplicate_email_rejected(client: TestClient, db: Session) -> None:
+    _, token, _ = _seed_staff(db, role=Role.SUPER_ADMIN)
+    email = _unique_email()
+
+    first = client.post(
+        "/auth/tenant/users",
+        json={"email": email, "password": "correct-horse-battery", "display_name": "First", "role": "STUDENT"},
+        headers=_headers(token),
+    )
+    assert first.status_code == 201
+    second = client.post(
+        "/auth/tenant/users",
+        json={"email": email, "password": "correct-horse-battery", "display_name": "Second", "role": "STUDENT"},
+        headers=_headers(token),
+    )
+    assert second.status_code == 409
+
+
+def test_teacher_cannot_create_users(client: TestClient, db: Session) -> None:
+    _, token, _ = _seed_staff(db, role=Role.TEACHER)
+
+    response = client.post(
+        "/auth/tenant/users",
+        json={"email": _unique_email(), "password": "correct-horse-battery", "display_name": "X", "role": "STUDENT"},
+        headers=_headers(token),
+    )
+    assert response.status_code == 403
+
+
+def test_student_cannot_create_users(client: TestClient, db: Session) -> None:
+    _, token, _ = _seed_staff(db, role=Role.STUDENT)
+
+    response = client.post(
+        "/auth/tenant/users",
+        json={"email": _unique_email(), "password": "correct-horse-battery", "display_name": "X", "role": "STUDENT"},
+        headers=_headers(token),
+    )
+    assert response.status_code == 403
+
+
+def test_admin_created_user_writes_an_audit_record(client: TestClient, db: Session) -> None:
+    _, token, _ = _seed_staff(db, role=Role.SUPER_ADMIN)
+
+    response = client.post(
+        "/auth/tenant/users",
+        json={"email": _unique_email(), "password": "correct-horse-battery", "display_name": "Audited", "role": "STUDENT"},
+        headers=_headers(token),
+    )
+    user_id = response.json()["id"]
+
+    audit_row = db.query(AuditLog).filter(AuditLog.target_id == user_id, AuditLog.action == "user.created_by_admin").first()
+    assert audit_row is not None
+
+
+def test_created_user_can_log_in_with_the_password_the_admin_set(client: TestClient, db: Session) -> None:
+    _, token, _ = _seed_staff(db, role=Role.SUPER_ADMIN)
+    email = _unique_email()
+
+    create_response = client.post(
+        "/auth/tenant/users",
+        json={"email": email, "password": "a-real-password-here", "display_name": "Loginable", "role": "STUDENT"},
+        headers=_headers(token),
+    )
+    assert create_response.status_code == 201
+
+    login_response = client.post("/auth/login", json={"email": email, "password": "a-real-password-here"})
+    assert login_response.status_code == 200

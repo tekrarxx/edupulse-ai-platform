@@ -5,6 +5,13 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 from app.models.user import Role
 
 _MIN_PASSWORD_LENGTH = 10
+_TRIVIAL_PASSWORDS = {"password", "12345678", "qwertyuiop"}
+
+
+def _reject_trivial_password(value: str) -> str:
+    if value.lower() in _TRIVIAL_PASSWORDS:
+        raise ValueError("password is too common")
+    return value
 
 
 class RegisterRequest(BaseModel):
@@ -22,10 +29,31 @@ class RegisterRequest(BaseModel):
 
     @field_validator("password")
     @classmethod
-    def _reject_trivial_password(cls, value: str) -> str:
-        if value.lower() in {"password", "12345678", "qwertyuiop"}:
-            raise ValueError("password is too common")
-        return value
+    def _validate_password(cls, value: str) -> str:
+        return _reject_trivial_password(value)
+
+
+class CreateTenantUserRequest(BaseModel):
+    """Admin-initiated enrollment (§53, ADR-011's deferred "administrative
+    operation") — a TENANT_ADMIN/SCHOOL_ADMIN/SUPER_ADMIN adding a specific
+    user to their own tenant with a specific role, unlike `/auth/register`
+    which only ever self-provisions a fresh tenant + STUDENT. The caller
+    chooses the initial password directly (there is no invite-link or
+    first-login-change flow yet — a documented, real gap, not silently
+    assumed solved); `role` is validated against the requesting admin's own
+    role by app/services/auth_service.py's creation matrix, not here, since
+    that check needs the actor's role, which this schema does not carry."""
+
+    email: EmailStr
+    password: str = Field(min_length=_MIN_PASSWORD_LENGTH, max_length=200)
+    display_name: str = Field(min_length=1, max_length=200)
+    role: Role
+    date_of_birth: date | None = None
+
+    @field_validator("password")
+    @classmethod
+    def _validate_password(cls, value: str) -> str:
+        return _reject_trivial_password(value)
 
 
 class LoginRequest(BaseModel):

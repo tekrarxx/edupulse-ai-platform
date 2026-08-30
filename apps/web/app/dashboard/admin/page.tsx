@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { fetchAdminDashboard, type AdminDashboard } from "@/lib/dashboard";
+import { AddUserForm } from "@/components/add-user-form";
 
 const _ADMIN_ROLES = new Set(["SCHOOL_ADMIN", "TENANT_ADMIN", "SUPER_ADMIN"]);
 
@@ -22,12 +23,19 @@ export default function AdminDashboardPage() {
     }
   }, [status, user, router]);
 
-  useEffect(() => {
-    if (status === "authenticated" && accessToken && user && _ADMIN_ROLES.has(user.role)) {
+  const reloadDashboard = () => {
+    if (accessToken) {
       fetchAdminDashboard(accessToken)
         .then(setDashboard)
         .catch(() => setError("Pano yüklenirken bir sorun oluştu."));
     }
+  };
+
+  useEffect(() => {
+    if (status === "authenticated" && accessToken && user && _ADMIN_ROLES.has(user.role)) {
+      reloadDashboard();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, accessToken, user]);
 
   if (status !== "authenticated" || !user || !_ADMIN_ROLES.has(user.role)) {
@@ -47,6 +55,8 @@ export default function AdminDashboardPage() {
       </div>
 
       {error && <p className="text-sm text-red-700">{error}</p>}
+
+      {accessToken && <AddUserForm accessToken={accessToken} onCreated={reloadDashboard} />}
 
       {dashboard && (
         <div className="flex flex-col gap-6">

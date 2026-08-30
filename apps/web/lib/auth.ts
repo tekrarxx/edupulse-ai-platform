@@ -73,6 +73,22 @@ export async function logout(): Promise<void> {
   await postAuth("/auth/logout");
 }
 
+export async function createTenantUser(
+  accessToken: string,
+  input: { email: string; password: string; display_name: string; role: Role; date_of_birth?: string }
+): Promise<AuthUser> {
+  const response = await fetch(`${API_URL}/auth/tenant/users`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) {
+    const detail = await response.json().catch(() => ({}));
+    throw new AuthApiError(response.status, detail.detail ?? "request_failed");
+  }
+  return response.json();
+}
+
 export async function fetchCurrentUser(accessToken: string): Promise<AuthUser> {
   const response = await fetch(`${API_URL}/auth/me`, {
     headers: { Authorization: `Bearer ${accessToken}` },

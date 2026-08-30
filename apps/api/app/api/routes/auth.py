@@ -7,7 +7,14 @@ from app.api.deps import enforce_rate_limit, get_current_user, require_role
 from app.core.config import get_settings
 from app.db.session import get_db
 from app.models.user import Role, User
-from app.schemas.auth import LoginRequest, RegisterRequest, SetDateOfBirthRequest, TokenResponse, UserOut
+from app.schemas.auth import (
+    CreateTenantUserRequest,
+    LoginRequest,
+    RegisterRequest,
+    SetDateOfBirthRequest,
+    TokenResponse,
+    UserOut,
+)
 from app.schemas.relationship import ParentLinkCreate, ParentLinkOut
 from app.services import auth_service, relationship_service
 
@@ -108,6 +115,30 @@ def list_tenant_users(
 
 
 _relationship_staff_access = require_role(Role.TENANT_ADMIN, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
+
+
+@router.post("/tenant/users", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+def create_tenant_user(
+    payload: CreateTenantUserRequest,
+    request: Request,
+    current_user: User = Depends(_relationship_staff_access),
+    db: Session = Depends(get_db),
+) -> UserOut:
+    """Admin-initiated enrollment into the admin's own tenant (§53) — closes
+    the gap `/auth/register` deliberately leaves open (ADR-011: self-service
+    only ever creates a fresh individual tenant + STUDENT). No access token
+    is issued here; this creates an account for someone else, never signs
+    the caller in as them."""
+    enforce_rate_limit(request, key_prefix="tenant_user_create", limit=30, window_seconds=60, identity=current_user.id)
+    try:
+        user = auth_service.create_tenant_user(
+            db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, actor_role=current_user.role, request=payload
+        )
+    except auth_service.EmailAlreadyRegistered:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="email_already_registered")
+    except auth_service.InsufficientRoleForUserCreation:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="insufficient_role_for_target_role")
+    return UserOut.model_validate(user)
 
 
 @router.post("/tenant/users/{user_id}/date-of-birth", response_model=UserOut)
