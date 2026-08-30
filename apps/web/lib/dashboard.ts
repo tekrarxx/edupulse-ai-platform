@@ -22,12 +22,34 @@ export type StudentDashboard = {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-export async function fetchStudentDashboard(accessToken: string): Promise<StudentDashboard> {
-  const response = await fetch(`${API_URL}/dashboard/student`, {
+export async function fetchStudentDashboard(accessToken: string, studentId?: string): Promise<StudentDashboard> {
+  // studentId lets a PARENT (or staff) fetch a specific linked child's
+  // dashboard instead of the caller's own — the backend (§51) still
+  // decides whether the caller is actually allowed to see that student.
+  const url = studentId
+    ? `${API_URL}/dashboard/student?student_id=${encodeURIComponent(studentId)}`
+    : `${API_URL}/dashboard/student`;
+  const response = await fetch(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   if (!response.ok) {
     throw new Error(`dashboard request failed with status ${response.status}`);
+  }
+  return response.json();
+}
+
+export type ParentChild = {
+  student_user_id: string;
+  display_name: string;
+  consent_on_file: boolean;
+};
+
+export async function fetchMyChildren(accessToken: string): Promise<ParentChild[]> {
+  const response = await fetch(`${API_URL}/auth/parent/children`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!response.ok) {
+    throw new Error(`parent children request failed with status ${response.status}`);
   }
   return response.json();
 }

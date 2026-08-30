@@ -24,18 +24,29 @@ export default function DashboardPage() {
     } else if (status === "authenticated" && user && _ADMIN_ROLES.has(user.role)) {
       // Tenant/school/super admins have their own aggregate page (§77).
       router.replace("/dashboard/admin");
+    } else if (status === "authenticated" && user?.role === "PARENT") {
+      // A parent has their own multi-child picker page, not a single-
+      // student view of their own (nonexistent) student dashboard.
+      router.replace("/dashboard/parent");
     }
   }, [status, user, router]);
 
   useEffect(() => {
-    if (status === "authenticated" && accessToken && user?.role !== "TEACHER" && user && !_ADMIN_ROLES.has(user.role)) {
+    if (
+      status === "authenticated" &&
+      accessToken &&
+      user &&
+      user.role !== "TEACHER" &&
+      user.role !== "PARENT" &&
+      !_ADMIN_ROLES.has(user.role)
+    ) {
       fetchStudentDashboard(accessToken)
         .then(setDashboard)
         .catch(() => setError("Panonuz yüklenirken bir sorun oluştu."));
     }
   }, [status, accessToken, user]);
 
-  if (status !== "authenticated" || !user || user.role === "TEACHER" || _ADMIN_ROLES.has(user.role)) {
+  if (status !== "authenticated" || !user || user.role === "TEACHER" || user.role === "PARENT" || _ADMIN_ROLES.has(user.role)) {
     return null;
   }
 

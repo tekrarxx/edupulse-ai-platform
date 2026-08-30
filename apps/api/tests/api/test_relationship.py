@@ -178,6 +178,41 @@ def test_teacher_cannot_create_parent_link(client: TestClient, db: Session) -> N
     assert response.status_code == 403
 
 
+def test_parent_lists_own_children(client: TestClient, db: Session) -> None:
+    tenant = Tenant(name="T", tenant_type=TenantType.SCHOOL)
+    db.add(tenant)
+    db.flush()
+    db.commit()
+    student, _ = _seed_user(db, role=Role.STUDENT, tenant=tenant)
+    other_student, _ = _seed_user(db, role=Role.STUDENT, tenant=tenant)  # not linked
+    parent, parent_token = _seed_user(db, role=Role.PARENT, tenant=tenant)
+    db.add(ParentStudentLink(tenant_id=tenant.id, parent_user_id=parent.id, student_user_id=student.id, consent_given_at=None))
+    db.commit()
+
+    response = client.get("/auth/parent/children", headers=_headers(parent_token))
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 1
+    assert body[0]["student_user_id"] == student.id
+    assert body[0]["display_name"] == student.display_name
+    assert body[0]["consent_on_file"] is False
+    assert "email" not in body[0]
+    assert other_student.id not in [c["student_user_id"] for c in body]
+
+
+def test_parent_with_no_linked_children_sees_empty_list(client: TestClient, db: Session) -> None:
+    _, parent_token = _seed_user(db, role=Role.PARENT)
+    response = client.get("/auth/parent/children", headers=_headers(parent_token))
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_non_parent_cannot_list_children(client: TestClient, db: Session) -> None:
+    _, student_token = _seed_user(db, role=Role.STUDENT)
+    response = client.get("/auth/parent/children", headers=_headers(student_token))
+    assert response.status_code == 403
+
+
 def test_parent_link_across_tenants_rejected(client: TestClient, db: Session) -> None:
     """§52: a staff member cannot link a parent/student that belong to a different tenant."""
     student, _ = _seed_user(db, role=Role.STUDENT)  # tenant A

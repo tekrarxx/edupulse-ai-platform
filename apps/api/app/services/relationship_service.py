@@ -54,6 +54,20 @@ def set_date_of_birth(db: Session, *, tenant_id: str, actor_user_id: str, target
     return user
 
 
+def list_children_for_parent(db: Session, *, tenant_id: str, parent_user_id: str) -> list[tuple[User, ParentStudentLink]]:
+    """§76-adjacent read for a PARENT's own portal: every student linked to
+    them in their own tenant, paired with the link (so the caller can show
+    whether consent is on file). Never a tenant-wide scan — scoped to
+    exactly the links belonging to this parent."""
+    rows = (
+        db.query(User, ParentStudentLink)
+        .join(ParentStudentLink, ParentStudentLink.student_user_id == User.id)
+        .filter(ParentStudentLink.tenant_id == tenant_id, ParentStudentLink.parent_user_id == parent_user_id)
+        .all()
+    )
+    return list(rows)
+
+
 def create_parent_link(
     db: Session,
     *,

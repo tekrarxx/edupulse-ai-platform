@@ -15,7 +15,7 @@ from app.schemas.auth import (
     TokenResponse,
     UserOut,
 )
-from app.schemas.relationship import ParentLinkCreate, ParentLinkOut
+from app.schemas.relationship import ParentChildOut, ParentLinkCreate, ParentLinkOut
 from app.services import auth_service, relationship_service
 
 logger = logging.getLogger(__name__)
@@ -115,6 +115,24 @@ def list_tenant_users(
 
 
 _relationship_staff_access = require_role(Role.TENANT_ADMIN, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
+
+
+@router.get("/parent/children", response_model=list[ParentChildOut])
+def list_my_children(
+    current_user: User = Depends(require_role(Role.PARENT)),
+    db: Session = Depends(get_db),
+) -> list[ParentChildOut]:
+    """A parent's own portal entry point — the piece that was missing for
+    a parent to use `GET /dashboard/student?student_id=...` and friends at
+    all: those endpoints already accepted a linked parent, but nothing let
+    a parent discover their own children's ids without already knowing a
+    UUID (§80: returns only what a parent needs to pick a child, not a
+    full account record)."""
+    rows = relationship_service.list_children_for_parent(db, tenant_id=current_user.tenant_id, parent_user_id=current_user.id)
+    return [
+        ParentChildOut(student_user_id=student.id, display_name=student.display_name, consent_on_file=link.consent_given_at is not None)
+        for student, link in rows
+    ]
 
 
 @router.post("/tenant/users", response_model=UserOut, status_code=status.HTTP_201_CREATED)

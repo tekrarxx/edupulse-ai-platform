@@ -21,3 +21,13 @@ class ParentLinkOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class ParentChildOut(BaseModel):
+    """A parent's own portal listing (§76-adjacent) — deliberately narrower
+    than UserOut: no email, no date_of_birth. A parent needs enough to pick
+    which child's dashboard to view, not their child's full account record."""
+
+    student_user_id: str
+    display_name: str
+    consent_on_file: bool

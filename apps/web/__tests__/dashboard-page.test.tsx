@@ -63,6 +63,20 @@ describe("DashboardPage", () => {
     expect(fetchStudentDashboardMock).not.toHaveBeenCalled();
   });
 
+  it("redirects a PARENT to the parent dashboard instead of rendering the student view", () => {
+    useAuthMock.mockReturnValue({
+      user: { id: "p1", tenant_id: "t1", email: "p@example.com", display_name: "Veli", role: "PARENT", is_active: true },
+      accessToken: "fake-token",
+      status: "authenticated",
+      logout: logoutMock,
+    });
+
+    render(<DashboardPage />);
+
+    expect(replaceMock).toHaveBeenCalledWith("/dashboard/parent");
+    expect(fetchStudentDashboardMock).not.toHaveBeenCalled();
+  });
+
   it("renders skill progress using only plain-language labels, never a raw score", async () => {
     fetchStudentDashboardMock.mockResolvedValueOnce({
       student_user_id: "u1",
