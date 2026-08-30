@@ -58,6 +58,49 @@ services:
     networks:
       - edupulse-net
 
+  # §92 workflows/scheduled-tasks orchestration. No core Prometheus/domain
+  # logic lives here — n8n only calls real API endpoints on a schedule; the
+  # application itself remains the source of truth (§92 explicit rule).
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: edupulse-n8n
+    restart: unless-stopped
+    environment:
+      N8N_BASIC_AUTH_ACTIVE: "true"
+      N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER:-admin}
+      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD:-change-me-in-local-env}
+      # Encrypts stored credentials (e.g. the scheduler service account's
+      # password) at rest in n8n's own SQLite DB — never committed (§79).
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-change-me-in-local-env}
+      GENERIC_TIMEZONE: ${N8N_TIMEZONE:-UTC}
+      # Read by infrastructure/n8n/workflows/retention-checkpoint-scheduler.json
+      # via {{ $env.* }} expressions — never written into the committed
+      # workflow JSON itself (§79).
+      API_BASE_URL: http://api:8000
+      RETENTION_SCHEDULER_EMAIL: ${RETENTION_SCHEDULER_EMAIL:-}
+      RETENTION_SCHEDULER_PASSWORD: ${RETENTION_SCHEDULER_PASSWORD:-}
+      # n8n blocks `$env` access from node expressions by default (a real
+      # behavior confirmed while building this workflow, not assumed) —
+      # this container only ever holds the three env vars above beyond
+      # n8n's own config, so allowing expression access to them is a
+      # deliberate, scoped exception, not a broad secrets leak.
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+    ports:
+      - "${N8N_PORT:-5678}:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./infrastructure/n8n/workflows:/workflows:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5678/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - edupulse-net
+
   api:
     build:
       context: ./apps/api
@@ -131,3 +174,4 @@ volumes:
   postgres_data:
   redis_data:
   ollama_data:
+  n8n_data:

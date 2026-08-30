@@ -197,3 +197,40 @@ TRANSFER_FAILURE, RETENTION_FAILURE`. Two different write paths, by design:
   automatic code path — only `TRANSFER_FAILURE`/`RETENTION_FAILURE` are
   ever auto-set, and only for their matching facet.
 - Cross-tenant negative tests (§52) on all new endpoints.
+
+## Addendum (Phase 10, 2026-08-30): Retention-Checkpoint Scheduler Wired
+
+The Consequences section above flagged that no scheduler/cron/n8n service
+existed yet — `GET /retention/checkpoints/due` was real, correct logic with
+no automated caller. This addendum closes that gap.
+
+**What changed.** `docker-compose.yml` gained an `n8n` service (§92) — no
+`depends_on` from `api` in the reverse direction, and no core Prometheus/
+domain logic added to n8n, consistent with §92's explicit rule that n8n is
+never the source of truth. `infrastructure/n8n/workflows/retention-checkpoint-scheduler.json`
+polls `GET /retention/checkpoints/due` hourly, authenticating as a
+dedicated staff account (`apps/api/scripts/seed_retention_scheduler_account.py`
+provisions it — a real `TEACHER` account, not a new auth mechanism). See
+`infrastructure/n8n/workflows/README.md` for the full setup steps and what
+this workflow intentionally does not do (deliver the retention check to the
+student, or send a notification — neither a content-delivery layer nor a
+notification channel exists yet).
+
+**Verified, not assumed.** The workflow was actually imported and executed
+(`n8n execute`) against the real local API in this session — not just
+written and left untested. Two real n8n runtime behaviors were discovered
+and had to be corrected, not guessed at: this n8n version blocks `$env`
+access from node expressions unless `N8N_BLOCK_ENV_ACCESS_IN_NODE=false` is
+set, and n8n never queues a downstream node when its only upstream output
+has zero items — an HTTP node's empty-array JSON response auto-splits into
+zero n8n items, so the summarizing node needed `alwaysOutputData: true` on
+the node immediately upstream of it (not on itself) to run at all. Both are
+documented inline in the workflow JSON and the README.
+
+**What is still not verified.** The workflow was run manually via the CLI,
+not left active over real wall-clock time on the hourly schedule, and only
+against a single tenant (this workflow's design is explicitly single-tenant
+per its own README — a real multi-tenant deployment needs one activated
+copy per tenant). These are real, lower-risk gaps for the next pilot's
+operational setup, not a code-correctness question this addendum leaves
+open.

@@ -1,0 +1,99 @@
+{
+  "id": "retention-checkpoint-scheduler",
+  "name": "Retention Checkpoint Scheduler",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "trigger-hourly",
+      "name": "Every Hour",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-400, -100]
+    },
+    {
+      "parameters": {},
+      "id": "trigger-manual-test",
+      "name": "Manual Test Run",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [-400, 100],
+      "notes": "Lets an operator (or `n8n execute --id=...`) run this workflow on demand, without waiting for the hourly schedule, for setup verification."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.API_BASE_URL }}/auth/login",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ email: $env.RETENTION_SCHEDULER_EMAIL, password: $env.RETENTION_SCHEDULER_PASSWORD }) }}",
+        "options": {}
+      },
+      "id": "login-as-scheduler",
+      "name": "Login As Scheduler",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-160, 0]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.API_BASE_URL }}/retention/checkpoints/due",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $json.access_token }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "get-due-checkpoints",
+      "name": "Get Due Checkpoints",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [80, 0],
+      "alwaysOutputData": true,
+      "notes": "alwaysOutputData is required here, not on the node downstream: an n8n HTTP Request node's JSON-array response auto-splits into one n8n item per array element, so zero due checkpoints means zero items — and n8n never queues a downstream node when its only upstream output has zero items (confirmed by inspecting n8n-core's workflow-execute.js while building this workflow). With this flag, an empty response still produces one placeholder item (json: {}) so Summarize Due Count always runs."
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// alwaysOutputData on \"Get Due Checkpoints\" guarantees at least one item\n// reaches this node even when zero checkpoints are due, but that\n// placeholder item's json is `{}` — a real RetentionCheckpointOut record\n// always has an `id` field, so filtering on that distinguishes \"one real\n// checkpoint\" from \"the empty-response placeholder\" reliably.\nconst realCheckpoints = $input.all().filter((item) => item.json && Object.keys(item.json).length > 0);\nreturn [{ json: { due_checkpoint_count: realCheckpoints.length } }];"
+      },
+      "id": "summarize-due-count",
+      "name": "Summarize Due Count",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [320, 0]
+    }
+  ],
+  "connections": {
+    "Every Hour": {
+      "main": [[{ "node": "Login As Scheduler", "type": "main", "index": 0 }]]
+    },
+    "Manual Test Run": {
+      "main": [[{ "node": "Login As Scheduler", "type": "main", "index": 0 }]]
+    },
+    "Login As Scheduler": {
+      "main": [[{ "node": "Get Due Checkpoints", "type": "main", "index": 0 }]]
+    },
+    "Get Due Checkpoints": {
+      "main": [[{ "node": "Summarize Due Count", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
