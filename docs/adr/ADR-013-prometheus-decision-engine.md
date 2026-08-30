@@ -320,3 +320,43 @@ a code change.
 mathematical-formulation process does not apply — `decision_policy.py` and
 its `score_candidates` output are untouched); it is an authorization-layer
 policy change (§37), reviewed under §134's ordinary priority rules instead.
+
+## Addendum 2 (Roadmap Stage A, 2026-08-30): Role/Tenant-Education-Policy Gap — a Deliberate Deferral, Not an Oversight
+
+`authorization_service.py`'s module docstring has flagged since Phase 6
+that role- and tenant-education-policy-based authorization checks (e.g. a
+tenant restricting which `CandidateActionType`s it permits at all, or a
+per-role override of the confidence thresholds) are not implemented. This
+addendum records the deliberate decision — asked for explicitly by the
+project roadmap — on whether that gap blocks a real pilot.
+
+**Decision: it does not block the first pilot, and stays deferred.**
+
+Reasoning:
+- The two safety-relevant gaps §81 actually requires before real minors
+  are on the platform — consent/age gating and human escalation for
+  low-confidence personalization — are both closed (rules 2 and 3 above).
+  What remains undone is *institutional customization* of an already-
+  conservative default policy, not a missing safety control.
+- No tenant has yet asked for a policy different from the shared default.
+  Building a configurable per-tenant policy engine now would be designing
+  for a hypothetical requirement before a second real customer exists to
+  validate it against — exactly what §125/§141's "don't design for
+  hypothetical future requirements" and §36's "population-level policy vs.
+  per-learner state are different evidence sources" both warn against.
+  A fabricated policy schema today would likely not match what a real
+  second school actually needs tomorrow.
+- The trigger for revisiting this is concrete and observable, not a vague
+  "later": **the moment a second real pilot tenant needs authorization
+  behavior different from the first's**, this must be designed properly
+  (its own ADR, its own data model, its own falsification criteria per
+  §98) rather than retrofitted under time pressure. Until then, every
+  tenant shares one policy, which is visible and auditable — arguably a
+  *safer* starting posture than an unused, unvalidated configuration
+  surface would be.
+
+This decision itself follows §134's priority order: it does not trade away
+Security, Privacy, Data Integrity, or Educational Safety — those are
+already covered by the three existing rules — it defers a Maintainability/
+Testability concern (supporting multiple institutional policies) until
+real evidence exists to design it correctly.
