@@ -12,6 +12,7 @@ from app.ai.prompts import SKILL_EXPLANATION_V1
 from app.models.ai_usage import AIUsageCapability
 from app.models.curriculum import Skill
 from app.schemas.ai import ExplanationResponse
+from app.services import entitlement_service
 
 
 class ExplanationError(Exception):
@@ -19,6 +20,10 @@ class ExplanationError(Exception):
 
 
 class SkillNotFound(ExplanationError):
+    pass
+
+
+class QuotaExceeded(ExplanationError):
     pass
 
 
@@ -32,6 +37,12 @@ def generate_skill_explanation(
     skill = db.get(Skill, skill_id)
     if skill is None:
         raise SkillNotFound()
+
+    # §48/§60: checked before spending a real LLM call, not after.
+    try:
+        entitlement_service.enforce_ai_explanation_quota(db, tenant_id=tenant_id)
+    except entitlement_service.QuotaExceeded:
+        raise QuotaExceeded()
 
     result = gateway.generate(
         template=SKILL_EXPLANATION_V1,

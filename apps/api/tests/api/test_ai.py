@@ -10,6 +10,7 @@ from app.api.deps import get_ai_provider
 from app.core.security import create_access_token, hash_password
 from app.main import app
 from app.models.ai_usage import AIUsageRecord
+from app.models.plan import Plan
 from app.models.tenant import Tenant, TenantType
 from app.models.user import Role, User
 
@@ -137,12 +138,52 @@ def test_successful_call_persists_usage_record(client: TestClient, db: Session, 
 
 def test_explanation_requests_are_rate_limited_per_user(client: TestClient, db: Session, skill_id: str, override_ai_provider) -> None:
     """§48/§139: the AI Gateway is a real cost center — a single account
-    must not be able to generate unbounded LLM calls."""
+    must not be able to generate unbounded LLM calls. Uses a plan with no
+    AI-explanation entitlement configured (unlimited) so this test isolates
+    the per-user *rate* limit from the separate monthly *quota* limit
+    (app/services/entitlement_service.py) — both are real, independent
+    controls, exercised by their own dedicated tests."""
     override_ai_provider(_FakeProvider([_VALID_JSON] * 20))
-    _, student_token = _seed_user(db, role=Role.STUDENT)
+    unlimited_plan = Plan(slug=f"unlimited-{uuid.uuid4().hex[:8]}", name="Unlimited (test)")
+    db.add(unlimited_plan)
+    db.flush()
+    student, student_token = _seed_user(db, role=Role.STUDENT)
+    tenant = db.get(Tenant, student.tenant_id)
+    tenant.plan_id = unlimited_plan.id
+    db.commit()
 
     responses = [client.post("/ai/explanations", json={"skill_id": skill_id}, headers=_headers(student_token)) for _ in range(21)]
 
     statuses = [r.status_code for r in responses]
     assert statuses.count(200) == 20  # explanations' limit is 20/minute
     assert 429 in statuses
+
+
+def test_free_plan_ai_explanation_quota_is_enforced(client: TestClient, db: Session, skill_id: str, override_ai_provider) -> None:
+    """§60: a new tenant defaults to the free plan (migration 0010), which
+    carries a 10/month AI-explanation entitlement."""
+    override_ai_provider(_FakeProvider([_VALID_JSON] * 10))
+    _, student_token = _seed_user(db, role=Role.STUDENT)
+
+    responses = [client.post("/ai/explanations", json={"skill_id": skill_id}, headers=_headers(student_token)) for _ in range(11)]
+
+    statuses = [r.status_code for r in responses]
+    assert statuses.count(200) == 10
+    assert statuses[-1] == 429
+    last_body = responses[-1].json()
+    assert last_body["detail"] == "ai_explanation_quota_exceeded"
+
+
+def test_quota_check_happens_before_the_provider_is_called(client: TestClient, db: Session, skill_id: str, override_ai_provider) -> None:
+    """§48: an over-quota tenant must never pay for a real LLM call — the
+    fake provider is seeded with exactly 10 responses; an 11th *call* would
+    raise IndexError from `_FakeProvider.generate`'s `.pop(0)`, not return
+    502/503, which would fail this test if the quota check ran too late."""
+    override_ai_provider(_FakeProvider([_VALID_JSON] * 10))
+    _, student_token = _seed_user(db, role=Role.STUDENT)
+
+    for _ in range(10):
+        assert client.post("/ai/explanations", json={"skill_id": skill_id}, headers=_headers(student_token)).status_code == 200
+
+    eleventh = client.post("/ai/explanations", json={"skill_id": skill_id}, headers=_headers(student_token))
+    assert eleventh.status_code == 429

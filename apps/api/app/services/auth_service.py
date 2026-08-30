@@ -14,10 +14,13 @@ from app.core.security import (
     hash_refresh_token,
     verify_password,
 )
+from app.models.plan import Plan
 from app.models.tenant import Tenant, TenantType
 from app.models.user import Role, User, UserSession
 from app.schemas.auth import CreateTenantUserRequest, LoginRequest, RegisterRequest
 from app.services.audit_service import record_audit as _record_audit
+
+_DEFAULT_PLAN_SLUG = "free"
 
 # §53/§78 least-privilege creation matrix: which roles an admin of a given
 # role may create within their own tenant. SUPER_ADMIN can create any role,
@@ -62,7 +65,8 @@ def register(db: Session, request: RegisterRequest) -> User:
     if existing is not None:
         raise EmailAlreadyRegistered()
 
-    tenant = Tenant(name=request.display_name, tenant_type=TenantType.INDIVIDUAL)
+    default_plan = db.query(Plan).filter(Plan.slug == _DEFAULT_PLAN_SLUG).first()
+    tenant = Tenant(name=request.display_name, tenant_type=TenantType.INDIVIDUAL, plan_id=default_plan.id if default_plan else None)
     db.add(tenant)
     db.flush()  # assigns tenant.id without ending the transaction
 

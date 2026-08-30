@@ -400,6 +400,11 @@ def test_admin_dashboard_shows_tenant_wide_counts(
     assert body["weak_skill_student_count"] == 1
     assert body["students_needing_attention_count"] == 1
     assert "subscription" not in body
+    # ADR-016: a tenant with no explicit plan_id falls back to the free
+    # plan (migration 0010's seeded 10/month AI-explanation limit).
+    assert body["plan_name"] == "Free"
+    assert body["ai_explanations_monthly_limit"] == 10
+    assert body["ai_explanations_used_this_month"] == 0
 
 
 def test_admin_dashboard_is_tenant_scoped(

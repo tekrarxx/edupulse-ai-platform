@@ -8,6 +8,7 @@ from app.models.decision import Decision
 from app.models.evidence import Evidence
 from app.models.knowledge_state import KnowledgeState
 from app.models.observation import Observation
+from app.models.plan import Entitlement, EntitlementKey, Plan
 from app.models.relationship import ParentStudentLink, TeacherStudentLink
 from app.models.retention import Hypothesis, RetentionCheckpoint
 from app.models.tenant import Tenant
@@ -20,11 +21,14 @@ __all__ = [
     "AuditLog",
     "Concept",
     "Decision",
+    "Entitlement",
+    "EntitlementKey",
     "Evidence",
     "Hypothesis",
     "KnowledgeState",
     "Observation",
     "ParentStudentLink",
+    "Plan",
     "Prerequisite",
     "Question",
     "RetentionCheckpoint",

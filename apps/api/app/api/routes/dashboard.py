@@ -126,4 +126,7 @@ def get_admin_dashboard(current_user: User = Depends(get_current_user), db: Sess
         ai_requests_total_count=dashboard.ai_requests_total_count,
         ai_requests_success_count=dashboard.ai_requests_success_count,
         ai_requests_failed_count=dashboard.ai_requests_failed_count,
+        plan_name=dashboard.plan_name,
+        ai_explanations_used_this_month=dashboard.ai_explanations_used_this_month,
+        ai_explanations_monthly_limit=dashboard.ai_explanations_monthly_limit,
     )

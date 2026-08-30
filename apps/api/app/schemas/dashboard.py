@@ -45,9 +45,10 @@ class TeacherDashboardOut(BaseModel):
 
 
 class AdminDashboardOut(BaseModel):
-    """§77. Tenant-wide counts only — no per-student names (§80). No
-    subscription/billing field: that domain (§59-§61) is not implemented
-    yet, so it is omitted rather than faked (§105)."""
+    """§77. Tenant-wide counts only — no per-student names (§80). Plan/
+    entitlement fields (ADR-016) are the narrow §59-§61 slice that exists;
+    still no invoice/payment field — that remains genuinely unbuilt, not
+    faked (§105)."""
 
     tenant_id: str
     active_student_count: int
@@ -68,3 +69,6 @@ class AdminDashboardOut(BaseModel):
     ai_requests_total_count: int
     ai_requests_success_count: int
     ai_requests_failed_count: int
+    plan_name: str
+    ai_explanations_used_this_month: int
+    ai_explanations_monthly_limit: int | None

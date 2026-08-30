@@ -60,6 +60,15 @@ export default function AdminDashboardPage() {
 
       {dashboard && (
         <div className="flex flex-col gap-6">
+          <section>
+            <h2 className="text-lg font-medium">Plan: {dashboard.plan_name}</h2>
+            <p className="mt-1 text-sm text-muted">
+              Bu ay {dashboard.ai_explanations_used_this_month} AI açıklaması kullanıldı
+              {dashboard.ai_explanations_monthly_limit !== null && ` / ${dashboard.ai_explanations_monthly_limit} limit`}
+              {dashboard.ai_explanations_monthly_limit === null && " (sınırsız)"}.
+            </p>
+          </section>
+
           <section className="grid grid-cols-2 gap-4">
             <Stat label="Aktif öğrenci" value={dashboard.active_student_count} />
             <Stat label="Aktif öğretmen" value={dashboard.active_teacher_count} />

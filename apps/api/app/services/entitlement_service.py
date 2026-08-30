@@ -1,0 +1,77 @@
+"""Plan/entitlement lookups and enforcement (§60). Deliberately the only
+place in the codebase that reads `Tenant.plan_id` or `Entitlement` — every
+other service asks this module a yes/no question, never queries the plan
+tables directly, so the entitlement model can grow without every caller
+needing to change (§60's whole point).
+
+Prometheus/PDE code must never import this module (§95) — it is consumed
+by non-PDE services only, currently just app/services/explanation_service.py.
+"""
+from datetime import datetime, timezone
+
+from sqlalchemy.orm import Session
+
+from app.models.ai_usage import AIUsageRecord
+from app.models.plan import Entitlement, EntitlementKey, Plan
+from app.models.tenant import Tenant
+
+_DEFAULT_PLAN_SLUG = "free"
+
+
+class EntitlementError(Exception):
+    pass
+
+
+class QuotaExceeded(EntitlementError):
+    pass
+
+
+def _resolve_plan_id(db: Session, *, tenant_id: str) -> str | None:
+    tenant = db.get(Tenant, tenant_id)
+    if tenant is not None and tenant.plan_id is not None:
+        return tenant.plan_id
+    # A tenant with no plan_id (should not happen for any tenant created
+    # after migration 0010, but defensive rather than assumed — §107) is
+    # treated as the default free plan, never as unlimited.
+    default_plan = db.query(Plan).filter(Plan.slug == _DEFAULT_PLAN_SLUG).first()
+    return default_plan.id if default_plan is not None else None
+
+
+def get_entitlement_value(db: Session, *, tenant_id: str, key: EntitlementKey) -> int | None:
+    """None means unlimited — either no `Entitlement` row exists for this
+    plan+key, or the row itself has `value=None` (§60: absence of a
+    configured limit is never treated as a fabricated restriction, §105)."""
+    plan_id = _resolve_plan_id(db, tenant_id=tenant_id)
+    if plan_id is None:
+        return None
+    entitlement = db.query(Entitlement).filter(Entitlement.plan_id == plan_id, Entitlement.key == key).first()
+    return entitlement.value if entitlement is not None else None
+
+
+def _count_ai_explanations_this_month(db: Session, *, tenant_id: str) -> int:
+    now = datetime.now(timezone.utc)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    return (
+        db.query(AIUsageRecord)
+        .filter(AIUsageRecord.tenant_id == tenant_id, AIUsageRecord.created_at >= month_start)
+        .count()
+    )
+
+
+def get_ai_explanation_usage(db: Session, *, tenant_id: str) -> tuple[int, int | None]:
+    """(used_this_month, monthly_limit) — `limit=None` means unlimited.
+    Shared by the enforcement check below and the admin dashboard's own
+    read-only display (app/services/dashboard_service.py), so both always
+    agree on what "usage" and "limit" mean."""
+    limit = get_entitlement_value(db, tenant_id=tenant_id, key=EntitlementKey.AI_EXPLANATIONS_MONTHLY_LIMIT)
+    used = _count_ai_explanations_this_month(db, tenant_id=tenant_id)
+    return used, limit
+
+
+def enforce_ai_explanation_quota(db: Session, *, tenant_id: str) -> None:
+    """Checked before generating (explanation_service.py) so an over-quota
+    tenant never pays the cost of a real LLM call for a request that will
+    be rejected anyway (§48 AI cost control)."""
+    used, limit = get_ai_explanation_usage(db, tenant_id=tenant_id)
+    if limit is not None and used >= limit:
+        raise QuotaExceeded()

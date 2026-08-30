@@ -5,7 +5,7 @@ from sqlalchemy import Boolean, DateTime, Enum, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
-from app.models._types import uuid_pk, utcnow
+from app.models._types import uuid_fk, uuid_pk, utcnow
 
 
 class TenantType(str, enum.Enum):
@@ -36,4 +36,12 @@ class Tenant(Base):
     # is_shadow=True regardless of who requested it — a hard floor a staff
     # caller's per-request `mode` cannot override.
     pde_shadow_mode_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # §60/§95: nullable at the DB level (kept additive/SQLite-batch-free per
+    # §107) — application code (app/services/entitlement_service.py) treats
+    # a null plan_id the same as the "free" plan, never as unlimited. Every
+    # tenant created after this migration gets a real plan_id immediately
+    # (see app/services/auth_service.py); existing tenants were backfilled
+    # by the migration itself. Prometheus code never reads this column
+    # (§95) — only non-PDE services like explanation_service.py do.
+    plan_id: Mapped[str | None] = uuid_fk("plans.id", nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)

@@ -35,6 +35,8 @@ def create_explanation(
         )
     except explanation_service.SkillNotFound:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="skill_not_found")
+    except explanation_service.QuotaExceeded:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="ai_explanation_quota_exceeded")
     except ai_gateway.SchemaValidationError:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="ai_provider_returned_invalid_output")
     except ai_gateway.SafetyRejected:

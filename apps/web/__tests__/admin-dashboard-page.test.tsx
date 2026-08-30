@@ -52,6 +52,9 @@ const dashboardResponse = {
   ai_requests_total_count: 10,
   ai_requests_success_count: 7,
   ai_requests_failed_count: 3,
+  plan_name: "Free",
+  ai_explanations_used_this_month: 4,
+  ai_explanations_monthly_limit: 10,
 };
 
 describe("AdminDashboardPage", () => {
@@ -75,6 +78,17 @@ describe("AdminDashboardPage", () => {
     expect(screen.getByText("Aktif öğrenci")).toBeInTheDocument();
     expect(screen.getByText("Aktif öğretmen")).toBeInTheDocument();
     expect(screen.getByText("Yapay zeka sistem sağlığı")).toBeInTheDocument();
+    expect(screen.getByText("Plan: Free")).toBeInTheDocument();
+    expect(screen.getByText(/4 AI açıklaması kullanıldı \/ 10 limit/)).toBeInTheDocument();
+  });
+
+  it("shows 'sınırsız' for a plan with no configured AI-explanation limit", async () => {
+    fetchAdminDashboardMock.mockResolvedValueOnce({ ...dashboardResponse, plan_name: "Okul", ai_explanations_monthly_limit: null });
+
+    render(<AdminDashboardPage />);
+
+    expect(await screen.findByText("Plan: Okul")).toBeInTheDocument();
+    expect(screen.getByText(/\(sınırsız\)/)).toBeInTheDocument();
   });
 
   it("redirects a STUDENT away from the admin dashboard", () => {
