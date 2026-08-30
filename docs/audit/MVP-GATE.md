@@ -109,9 +109,11 @@ chain, not `create_all`):
 | **Total** | | **126 passed, 0 failed** |
 | Frontend | `apps/web/__tests__/` | 2 test files (login page, status badge) — not re-run in this pass; frontend has not progressed past the Phase 1/2 auth skeleton, see §4 |
 
-No dedicated `tests/e2e/` directory exists — §86 lists it as a layer, but
-this codebase's "E2E" so far has been the manual HTTP trace in §1 above,
-not an automated suite. **Gap, tracked below, not hidden.**
+**Update (Roadmap Stage A, 2026-08-30)**: `tests/e2e/test_mvp_learning_loop.py`
+now exists — the exact §1 journey above, automated as one real, CI-repeatable
+pytest test against the same Postgres-backed fixtures every other API test
+uses. The gap this section originally described is closed; see the updated
+row in §4's table.
 
 Cross-tenant negative tests (§52) exist for every tenant-scoped resource
 added since Phase 2: auth/tenant users, curriculum, assessment/evidence,
@@ -147,7 +149,7 @@ green after every phase's commit in this session.
 | ~~Consent/age-based decision authorization~~ — **CLOSED in Phase 10** (`ADR-013` addendum, migration `0009`, `POST /auth/tenant/users/{id}/date-of-birth`, `POST /auth/tenant/parent-links`). A minor with no recorded guardian consent now has every otherwise-`ALLOWED` decision escalated instead of auto-executed, verified end to end against a live decision. **Residual, still-open scope**: role- and tenant-education-policy-based authorization checks are not implemented (no such policy data model exists); an unrecorded date of birth is treated as "unknown," not "adult," so students who existed before this migration — or who never had a date of birth recorded — are not protected by this specific gate until an admin records it, an operational rollout step for the next real pilot, not a code gap. | Phase 6 | — | See ADR-013 addendum for the full closure rationale and the residual gap. |
 | Execution layer (actually serving the decided task to a student) | Phase 6 | **Yes** | Explicitly out of scope per the Phase 6 plan — belongs to Phase 9 dashboards/content delivery. The loop is provably correct up to "decision," which is what §115 asks for. |
 | Open-ended delayed-retention grading | Phase 7 | **Yes** | v1 requires auto-gradable questions so the falsification verdict has a definite outcome. Narrow, documented constraint (ADR-014). |
-| `tests/e2e/` automated suite | Phase 1 (never built) | **Marginal** | This report's §1 trace substitutes for it today, but it was manual and is not repeatable in CI. Recommend adding at least one automated E2E test (the same journey as §1) before the next phase, since manual re-verification won't scale. |
+| ~~`tests/e2e/` automated suite~~ — **CLOSED (Roadmap Stage A, 2026-08-30)**: `tests/e2e/test_mvp_learning_loop.py` automates this exact §1 trace end to end (enrollment through the real admin-enrollment API → curriculum → 5 attempts → knowledge state → Prometheus decision → auto-scheduled retention → transfer failure → backdated-checkpoint completion → falsification verdict), against real Postgres, in the ordinary pytest run. | Phase 1 (never built) | — | One golden-path journey by design — does not replace the targeted unit/API/security suites, which remain the place for edge cases and negative tests. |
 | Admin/staff-initiated student enrollment into an existing tenant | Phase 2 | **Yes for now, but noticed** | `/auth/register` only self-provisions a fresh individual tenant + STUDENT. There is no API for a school admin to add a specific student to their tenant — this session had to seed the student directly via a DB script to build the trace. Real schools will need this before Phase 9/pilot. |
 | Second subject (e.g. Chemistry) demonstrated with zero code changes (§113 P2 DoD) | Phase 3 | **Yes** | Architecturally supported (nothing hardcodes Physics), but not re-demonstrated in this session — recommend a quick seed-data check before claiming it, not a code change. |
 | `.env~` stray untracked file | Session start | **Yes** | Pre-existing, untracked, not committed — likely an editor backup. Should be deleted or added to `.gitignore` if it recurs. |
