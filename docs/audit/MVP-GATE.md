@@ -129,7 +129,7 @@ test_tenant_isolation.py` suite.
 |---|---|---|---|---|---|---|---|
 | 1 — P0 Foundation | ✅ | ✅ (0001) | ✅ | ✅ (health) | n/a | README | |
 | 2 — P1 Identity/RBAC | ✅ | ✅ (0002) | ✅ | ✅ | ✅ | ADR-002, ADR-011 | |
-| 3 — P2 Curriculum | ✅ | ✅ (0003) | ✅ (prereq cycle) | ✅ | ✅ | — | 2nd-subject-needs-no-code not re-demonstrated this pass |
+| 3 — P2 Curriculum | ✅ | ✅ (0003) | ✅ (prereq cycle) | ✅ | ✅ | — | 2nd-subject-needs-no-code demonstrated (Roadmap Stage A, `tests/e2e/test_second_subject_chemistry.py`) |
 | 4 — P3 Assessment/Evidence | ✅ | ✅ (0004) | ✅ (traceability) | ✅ | ✅ | — | append-only enforced by Postgres trigger |
 | 5 — P4 Knowledge State | ✅ | ✅ (0005) | ✅ (property-based) | ✅ | ✅ | ADR-012 | reproducibility fixed to float-tolerance this session |
 | 6 — P5 Decision Engine | ✅ | ✅ (0006) | ✅ (property + scenario) | ✅ | ✅ | ADR-013 | shadow mode data-level only, no execution layer (by design, §113 P8+) |
@@ -151,7 +151,7 @@ green after every phase's commit in this session.
 | Open-ended delayed-retention grading | Phase 7 | **Yes** | v1 requires auto-gradable questions so the falsification verdict has a definite outcome. Narrow, documented constraint (ADR-014). |
 | ~~`tests/e2e/` automated suite~~ — **CLOSED (Roadmap Stage A, 2026-08-30)**: `tests/e2e/test_mvp_learning_loop.py` automates this exact §1 trace end to end (enrollment through the real admin-enrollment API → curriculum → 5 attempts → knowledge state → Prometheus decision → auto-scheduled retention → transfer failure → backdated-checkpoint completion → falsification verdict), against real Postgres, in the ordinary pytest run. | Phase 1 (never built) | — | One golden-path journey by design — does not replace the targeted unit/API/security suites, which remain the place for edge cases and negative tests. |
 | Admin/staff-initiated student enrollment into an existing tenant | Phase 2 | **Yes for now, but noticed** | `/auth/register` only self-provisions a fresh individual tenant + STUDENT. There is no API for a school admin to add a specific student to their tenant — this session had to seed the student directly via a DB script to build the trace. Real schools will need this before Phase 9/pilot. |
-| Second subject (e.g. Chemistry) demonstrated with zero code changes (§113 P2 DoD) | Phase 3 | **Yes** | Architecturally supported (nothing hardcodes Physics), but not re-demonstrated in this session — recommend a quick seed-data check before claiming it, not a code change. |
+| ~~Second subject (e.g. Chemistry) demonstrated with zero code changes~~ — **CLOSED (Roadmap Stage A, 2026-08-30)**: `scripts/seed_curriculum_chemistry.py` (a real Kimya > Kimyasal Bağlar > İyonik Bağ slice) + `tests/e2e/test_second_subject_chemistry.py` run assessment, knowledge-state, and Prometheus decision generation against it, automated, through the exact same code paths as the Physics e2e test. Zero code changes were needed — only new curriculum rows. | Phase 3 | — | — |
 | `.env~` stray untracked file | Session start | **Yes** | Pre-existing, untracked, not committed — likely an editor backup. Should be deleted or added to `.gitignore` if it recurs. |
 | ADR-001/003–010 from §101's suggested initial set (modular-monolith, event-sourcing, AI-gateway, shadow-mode, SaaS-entitlements, local-first) | Various | **Yes** | Not required until those systems exist (AI Gateway is Phase 8, SaaS is Phase 10). Current ADRs (ADR-002, 011, 012, 013, 014) cover everything actually built. |
 
