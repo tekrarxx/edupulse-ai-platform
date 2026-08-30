@@ -19,3 +19,6 @@ pytest-asyncio==0.25.0
 hypothesis==6.123.2
 httpx==0.28.1
 ruff==0.8.4
+# §109/§138 load testing (tests/load/locustfile.py) — dev tooling only,
+# never imported by application code.
+locust==2.32.4
