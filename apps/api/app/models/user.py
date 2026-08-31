@@ -56,3 +56,20 @@ class UserSession(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class PasswordResetToken(Base):
+    """A single-use, short-lived password-reset request (§78). Same
+    hashed-at-rest pattern as `UserSession.refresh_token_hash` — only the
+    sha256 hash is stored, the raw value only ever exists in the emailed
+    link. `used_at` set = already consumed, distinct from `expires_at`
+    passing, so a re-used-but-still-unexpired token is rejected too."""
+
+    __tablename__ = "password_reset_tokens"
+
+    id: Mapped[str] = uuid_pk()
+    user_id: Mapped[str] = uuid_fk("users.id")
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

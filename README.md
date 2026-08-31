@@ -76,6 +76,14 @@ docker compose exec postgres psql -U edupulse -d edupulse -c "CREATE DATABASE ed
 | `api` | FastAPI backend | 8000 |
 | `web` | Next.js frontend | 3000 |
 | `ollama` | Yerel LLM (AI Gateway, §44) | 11434 |
+| `mailpit` | Yerel SMTP yakalayıcı (şifre sıfırlama e-postaları) | 1025 (SMTP), 8025 (web arayüzü) |
+
+Uygulamanın gönderdiği tüm e-postalar (şu an yalnızca şifre sıfırlama)
+gerçek bir posta kutusuna değil, `mailpit`'e gider — http://localhost:8025
+adresinden okuyabilirsiniz. Bu, local-first ilkesine uygun bir tasarım
+(§9-11): harici bir e-posta sağlayıcısı/API key gerekmez. Prod'da gerçek bir
+sağlayıcıya geçiş `SMTP_HOST`/`SMTP_PORT` ayarlarını değiştirmekten ibarettir
+— `app/services/email_service.py` hiçbir sağlayıcıya özel kod içermez.
 
 `ollama` compose dosyasında tanımlı ama **varsayılan olarak çalıştırılmaz/
 model indirilmez**. Gerçek donanımda test edildi (bkz.

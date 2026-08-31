@@ -48,9 +48,15 @@ export default function LoginPage() {
             autoComplete="email"
           />
         </label>
-        <label className="flex flex-col gap-1 text-sm">
-          Şifre
+        <div className="flex flex-col gap-1 text-sm">
+          <span className="flex items-center justify-between">
+            <label htmlFor="login-password">Şifre</label>
+            <a href="/forgot-password" className="text-xs font-normal text-primary underline">
+              Şifremi unuttum
+            </a>
+          </span>
           <input
+            id="login-password"
             type="password"
             required
             value={password}
@@ -58,7 +64,7 @@ export default function LoginPage() {
             className="rounded-md border border-border px-3 py-2 focus:border-primary focus:outline-none"
             autoComplete="current-password"
           />
-        </label>
+        </div>
 
         {error && <p className="text-sm text-red-600">{error}</p>}
 

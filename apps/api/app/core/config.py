@@ -30,6 +30,17 @@ class Settings(BaseSettings):
     ollama_model: str = "llama3.2:1b"
     ai_request_timeout_seconds: float = 30.0
 
+    # §9-11 local-first: a local Mailpit SMTP catcher by default (see
+    # docker-compose.yml), never a real provider/API key out of the box.
+    # Swapping to a real transactional-email provider for production is a
+    # deliberate later decision (§119), not something app code should assume.
+    smtp_host: str = "localhost"
+    smtp_port: int = 1025
+    smtp_from_address: str = "no-reply@edupulse.local"
+    # Used only to build the link inside password-reset emails — must be
+    # reachable from the recipient's browser, never a container-internal name.
+    web_base_url: str = "http://localhost:3000"
+
     @property
     def cors_origins(self) -> list[str]:
         return [origin.strip() for origin in self.api_cors_origins.split(",") if origin.strip()]

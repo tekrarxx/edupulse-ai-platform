@@ -10,6 +10,8 @@ from app.models.user import Role, User
 from app.schemas.auth import (
     CreateTenantUserRequest,
     LoginRequest,
+    PasswordResetConfirm,
+    PasswordResetRequest,
     RegisterRequest,
     SetDateOfBirthRequest,
     TokenResponse,
@@ -118,6 +120,26 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db)) 
     if raw_refresh_token is not None:
         auth_service.revoke_session(db, raw_refresh_token)
     _clear_refresh_cookie(response)
+
+
+@router.post("/password-reset/request", status_code=status.HTTP_202_ACCEPTED)
+def request_password_reset(payload: PasswordResetRequest, request: Request, db: Session = Depends(get_db)) -> dict:
+    # IP-keyed, not email-keyed: an email-keyed limit would itself be an
+    # enumeration oracle (a locked-out response implies the email exists).
+    enforce_rate_limit(request, key_prefix="password-reset-request", limit=5, window_seconds=60)
+    auth_service.request_password_reset(db, payload.email)
+    # Always the same response regardless of whether the email exists or
+    # sending actually succeeded (§90 — see auth_service.request_password_reset).
+    return {"detail": "if_account_exists_email_sent"}
+
+
+@router.post("/password-reset/confirm", status_code=status.HTTP_204_NO_CONTENT)
+def confirm_password_reset(payload: PasswordResetConfirm, request: Request, db: Session = Depends(get_db)) -> None:
+    enforce_rate_limit(request, key_prefix="password-reset-confirm", limit=10, window_seconds=60)
+    try:
+        auth_service.reset_password(db, payload.token, payload.new_password)
+    except auth_service.PasswordResetTokenInvalid:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_or_expired_token")
 
 
 @router.get("/me", response_model=UserOut)

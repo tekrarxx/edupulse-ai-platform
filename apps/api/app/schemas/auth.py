@@ -77,6 +77,20 @@ class SetDateOfBirthRequest(BaseModel):
     date_of_birth: date
 
 
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetConfirm(BaseModel):
+    token: str = Field(min_length=1)
+    new_password: str = Field(min_length=_MIN_PASSWORD_LENGTH, max_length=200)
+
+    @field_validator("new_password")
+    @classmethod
+    def _validate_new_password(cls, value: str) -> str:
+        return _reject_trivial_password(value)
+
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"

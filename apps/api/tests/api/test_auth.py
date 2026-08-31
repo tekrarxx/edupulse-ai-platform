@@ -7,6 +7,7 @@ from app.core.security import create_access_token, hash_password
 from app.models.audit_log import AuditLog
 from app.models.tenant import Tenant, TenantType
 from app.models.user import Role, User
+from app.services import email_service
 
 
 def _unique_email() -> str:
@@ -309,3 +310,78 @@ def test_created_user_can_log_in_with_the_password_the_admin_set(client: TestCli
 
     login_response = client.post("/auth/login", json={"email": email, "password": "a-real-password-here"})
     assert login_response.status_code == 200
+
+
+def _capture_sent_emails(monkeypatch) -> list[dict]:
+    sent: list[dict] = []
+
+    def _fake_send(*, to_email: str, reset_link: str) -> None:
+        sent.append({"to_email": to_email, "reset_link": reset_link})
+
+    monkeypatch.setattr(email_service, "send_password_reset_email", _fake_send)
+    return sent
+
+
+def test_password_reset_request_returns_202_for_a_real_email(client: TestClient, monkeypatch) -> None:
+    sent = _capture_sent_emails(monkeypatch)
+    body = _register(client)
+    email = body["user"]["email"]
+
+    response = client.post("/auth/password-reset/request", json={"email": email})
+
+    assert response.status_code == 202
+    assert len(sent) == 1
+
+
+def test_password_reset_request_returns_the_same_response_for_an_unknown_email(client: TestClient, monkeypatch) -> None:
+    """§90 — identical status and body whether or not the email exists, so
+    the endpoint cannot be used to enumerate registered accounts."""
+    sent = _capture_sent_emails(monkeypatch)
+
+    response = client.post("/auth/password-reset/request", json={"email": _unique_email()})
+
+    assert response.status_code == 202
+    assert response.json() == {"detail": "if_account_exists_email_sent"}
+    assert sent == []
+
+
+def test_password_reset_confirm_changes_password(client: TestClient, monkeypatch) -> None:
+    sent = _capture_sent_emails(monkeypatch)
+    email = _unique_email()
+    _register(client, email=email, password="original-password-1")
+    client.post("/auth/password-reset/request", json={"email": email})
+    raw_token = sent[0]["reset_link"].split("token=")[1]
+
+    confirm_response = client.post(
+        "/auth/password-reset/confirm", json={"token": raw_token, "new_password": "brand-new-password-2"}
+    )
+    assert confirm_response.status_code == 204
+
+    old_password_login = client.post("/auth/login", json={"email": email, "password": "original-password-1"})
+    assert old_password_login.status_code == 401
+
+    new_password_login = client.post("/auth/login", json={"email": email, "password": "brand-new-password-2"})
+    assert new_password_login.status_code == 200
+
+
+def test_password_reset_confirm_rejects_a_reused_token(client: TestClient, monkeypatch) -> None:
+    sent = _capture_sent_emails(monkeypatch)
+    email = _unique_email()
+    _register(client, email=email, password="original-password-1")
+    client.post("/auth/password-reset/request", json={"email": email})
+    raw_token = sent[0]["reset_link"].split("token=")[1]
+
+    first = client.post("/auth/password-reset/confirm", json={"token": raw_token, "new_password": "first-new-password"})
+    assert first.status_code == 204
+
+    second = client.post("/auth/password-reset/confirm", json={"token": raw_token, "new_password": "second-new-password"})
+    assert second.status_code == 400
+    assert second.json()["detail"] == "invalid_or_expired_token"
+
+
+def test_password_reset_confirm_rejects_an_unknown_token(client: TestClient) -> None:
+    response = client.post(
+        "/auth/password-reset/confirm", json={"token": "not-a-real-token", "new_password": "irrelevant-password"}
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"] == "invalid_or_expired_token"

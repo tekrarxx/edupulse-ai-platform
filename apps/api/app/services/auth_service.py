@@ -7,8 +7,10 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.security import (
     create_access_token,
+    generate_password_reset_token,
     generate_refresh_token,
     hash_password,
     hash_refresh_token,
@@ -16,8 +18,9 @@ from app.core.security import (
 )
 from app.models.plan import Plan
 from app.models.tenant import Tenant, TenantType
-from app.models.user import Role, User, UserSession
+from app.models.user import PasswordResetToken, Role, User, UserSession
 from app.schemas.auth import CreateTenantUserRequest, LoginRequest, RegisterRequest
+from app.services import email_service
 from app.services.audit_service import record_audit as _record_audit
 
 _DEFAULT_PLAN_SLUG = "free"
@@ -53,6 +56,13 @@ class AccountInactive(AuthError):
 
 
 class SessionInvalid(AuthError):
+    pass
+
+
+class PasswordResetTokenInvalid(AuthError):
+    """Covers "doesn't exist", "expired", and "already used" alike — the API
+    response must not distinguish between them (§90: no information that
+    aids probing a token or brute-forcing the reset flow)."""
     pass
 
 
@@ -175,3 +185,55 @@ def revoke_session(db: Session, raw_refresh_token: str) -> None:
     if session is not None and session.revoked_at is None:
         session.revoked_at = datetime.now(timezone.utc)
         db.commit()
+
+
+def request_password_reset(db: Session, email: str) -> None:
+    """Always succeeds from the caller's point of view, whether or not the
+    email belongs to a real account (§90 — a distinguishable response here
+    would let an attacker enumerate registered emails). If a matching,
+    active user exists, a real token is created and a real email is sent;
+    email-delivery failure is swallowed here (already logged by
+    email_service) rather than surfaced, for the same anti-enumeration
+    reason — the API's response shape never depends on whether sending
+    actually succeeded."""
+    user = db.query(User).filter(User.email == email).first()
+    if user is None or not user.is_active:
+        return
+
+    raw_token, token_hash, expires_at = generate_password_reset_token()
+    db.add(PasswordResetToken(user_id=user.id, token_hash=token_hash, expires_at=expires_at))
+    db.commit()
+
+    settings = get_settings()
+    reset_link = f"{settings.web_base_url}/reset-password?token={raw_token}"
+    try:
+        email_service.send_password_reset_email(to_email=user.email, reset_link=reset_link)
+    except email_service.EmailDeliveryError:
+        pass
+
+
+def reset_password(db: Session, raw_token: str, new_password: str) -> User:
+    """Consumes a password-reset token exactly once and revokes every
+    existing session for the account (§78 — if the account was compromised,
+    a reset should not leave an attacker's session alive; the legitimate
+    user simply logs in again with the new password)."""
+    token_hash = hash_refresh_token(raw_token)
+    reset_token = db.query(PasswordResetToken).filter(PasswordResetToken.token_hash == token_hash).first()
+
+    now = datetime.now(timezone.utc)
+    if reset_token is None or reset_token.used_at is not None or reset_token.expires_at < now:
+        raise PasswordResetTokenInvalid()
+
+    user = db.get(User, reset_token.user_id)
+    if user is None or not user.is_active:
+        raise PasswordResetTokenInvalid()
+
+    user.password_hash = hash_password(new_password)
+    reset_token.used_at = now
+    db.query(UserSession).filter(UserSession.user_id == user.id, UserSession.revoked_at.is_(None)).update(
+        {UserSession.revoked_at: now}
+    )
+    _record_audit(db, tenant_id=user.tenant_id, actor_user_id=user.id, action="user.password_reset", target_type="user", target_id=user.id)
+    db.commit()
+    db.refresh(user)
+    return user

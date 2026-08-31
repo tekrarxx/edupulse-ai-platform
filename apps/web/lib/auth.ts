@@ -73,6 +73,17 @@ export async function logout(): Promise<void> {
   await postAuth("/auth/logout");
 }
 
+export async function requestPasswordReset(email: string): Promise<void> {
+  // Always resolves the same way regardless of whether the email is
+  // registered (§90) — postAuth only throws on a non-2xx status, and the
+  // API always returns 202 here.
+  await postAuth("/auth/password-reset/request", { email });
+}
+
+export async function confirmPasswordReset(input: { token: string; new_password: string }): Promise<void> {
+  await postAuth("/auth/password-reset/confirm", input);
+}
+
 export async function createTenantUser(
   accessToken: string,
   input: { email: string; password: string; display_name: string; role: Role; date_of_birth?: string }

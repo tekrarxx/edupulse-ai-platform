@@ -24,6 +24,10 @@ _hasher = PasswordHasher()
 
 ACCESS_TOKEN_TTL = timedelta(minutes=15)
 REFRESH_TOKEN_TTL = timedelta(days=30)
+# Deliberately much shorter than a refresh token: a password-reset link sent
+# by email sits in an inbox longer than a browser session does, so a short
+# window bounds how long a compromised/leaked email can be used.
+PASSWORD_RESET_TOKEN_TTL = timedelta(hours=1)
 JWT_ALGORITHM = "HS256"
 
 
@@ -79,3 +83,14 @@ def generate_refresh_token() -> tuple[str, str, datetime]:
 
 def hash_refresh_token(raw_token: str) -> str:
     return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+
+
+def generate_password_reset_token() -> tuple[str, str, datetime]:
+    """Same opaque-random-value-hashed-at-rest pattern as the refresh token
+    (§78 — a stolen DB row must not be replayable as a live token), just a
+    much shorter TTL. Returns (raw_token_for_the_email_link,
+    sha256_hash_for_storage, expires_at)."""
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = hash_refresh_token(raw_token)
+    expires_at = datetime.now(timezone.utc) + PASSWORD_RESET_TOKEN_TTL
+    return raw_token, token_hash, expires_at
