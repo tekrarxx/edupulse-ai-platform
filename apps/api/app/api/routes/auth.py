@@ -24,22 +24,46 @@ router = APIRouter(prefix="/auth")
 _REFRESH_COOKIE_NAME = "edupulse_refresh_token"
 _REFRESH_COOKIE_PATH = "/auth"
 
+# A second, non-sensitive cookie scoped to "/" purely so the web app's
+# Next.js middleware can do its UX-level "don't flash a protected page"
+# check (middleware.ts) without widening the real refresh token's Path.
+# The refresh cookie itself deliberately stays scoped to /auth — the one
+# path prefix that ever needs to read it server-side (§78 minimal
+# exposure) — so it is never sent on requests to unrelated API routes.
+# This hint cookie carries no session material (constant value, never
+# looked up anywhere) and, exactly like the comment on middleware.ts
+# already says, was never itself a proof of a valid session — only a
+# real access/refresh token exchange is.
+_SESSION_HINT_COOKIE_NAME = "edupulse_session"
+_SESSION_HINT_COOKIE_PATH = "/"
+
 
 def _set_refresh_cookie(response: Response, raw_token: str, expires_at) -> None:
     settings = get_settings()
+    is_production = settings.environment == "production"
     response.set_cookie(
         key=_REFRESH_COOKIE_NAME,
         value=raw_token,
         httponly=True,
-        secure=settings.environment == "production",
+        secure=is_production,
         samesite="lax",
         path=_REFRESH_COOKIE_PATH,
+        expires=expires_at,
+    )
+    response.set_cookie(
+        key=_SESSION_HINT_COOKIE_NAME,
+        value="1",
+        httponly=True,
+        secure=is_production,
+        samesite="lax",
+        path=_SESSION_HINT_COOKIE_PATH,
         expires=expires_at,
     )
 
 
 def _clear_refresh_cookie(response: Response) -> None:
     response.delete_cookie(key=_REFRESH_COOKIE_NAME, path=_REFRESH_COOKIE_PATH)
+    response.delete_cookie(key=_SESSION_HINT_COOKIE_NAME, path=_SESSION_HINT_COOKIE_PATH)
 
 
 def _token_response(user: User, response: Response, db: Session) -> TokenResponse:
