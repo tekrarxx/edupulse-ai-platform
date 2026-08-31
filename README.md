@@ -1,15 +1,21 @@
 # EduPulse AI
 
+Repo: https://github.com/tekrarxx/edupulse-ai-platform
+
 Kanıta dayalı, adaptif öğrenme platformu. Bkz. `Claude.md` (CLAUDE.md) —
 depodaki mühendislik anayasası. Bu README yalnızca yerel geliştirme
 kurulumunu anlatır.
 
 ## Durum
 
-Faz 1 — P0 Foundation: çalışan bir iskelet. Kimlik doğrulama, kiracı
-yönetimi, eğitim domaini, PDE (karar motoru), AI entegrasyonu ve
-dashboard'lar henüz yok — bunlar sonraki fazlarda gelecek
-(`EDUPULSE-CLAUDE-CODE-PHASES.md`).
+MVP döngüsü uçtan uca çalışıyor (bkz. `docs/audit/MVP-GATE.md`, PASS):
+kimlik doğrulama, kiracı/RBAC, eğitim domaini (Fizik ilk alan), assessment/
+observation/evidence ayrımı, Bayesian bilgi durumu tahmini, Prometheus
+Karar Motoru (PDE), transfer/gecikmeli hatırlama/falsifikasyon, AI Gateway
+(Ollama), öğrenci/öğretmen/veli/kurum dashboard'ları ve dar kapsamlı bir
+SaaS entitlement sistemi (bkz. `EDUPULSE-CLAUDE-CODE-PHASES.md` faz faz
+detaylar için). Ürün henüz pilot aşamasında; fiyatlandırma/billing
+kasıtlı olarak henüz eklenmedi.
 
 ## Gereksinimler
 
