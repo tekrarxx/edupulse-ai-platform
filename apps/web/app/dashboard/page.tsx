@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { fetchStudentDashboard, type StudentDashboard } from "@/lib/dashboard";
 import { SkillProgressCard } from "@/components/skill-progress-card";
+import { DashboardShell } from "@/components/dashboard-shell";
 
 const _ADMIN_ROLES = new Set(["SCHOOL_ADMIN", "TENANT_ADMIN", "SUPER_ADMIN"]);
 
@@ -51,17 +52,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-6 p-8">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Merhaba, {user.display_name}</h1>
-        <button
-          onClick={() => logout().then(() => router.push("/login"))}
-          className="w-fit rounded-md border border-border px-4 py-2 text-sm"
-        >
-          Çıkış yap
-        </button>
-      </div>
-
+    <DashboardShell title={`Merhaba, ${user.display_name}`} onLogout={() => logout().then(() => router.push("/login"))}>
       {error && <p className="text-sm text-red-700">{error}</p>}
 
       {dashboard && (
@@ -86,6 +77,6 @@ export default function DashboardPage() {
           )}
         </>
       )}
-    </main>
+    </DashboardShell>
   );
 }

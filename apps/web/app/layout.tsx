@@ -4,7 +4,7 @@ import { AuthProvider } from "@/lib/auth-context";
 
 export const metadata: Metadata = {
   title: "EduPulse AI",
-  description: "Adaptive learning platform — local development shell",
+  description: "Öğrencinin gerçekte ne bildiğini anlayan, kanıta dayalı adaptif öğrenme platformu.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

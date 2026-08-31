@@ -7,6 +7,9 @@
   --foreground: 222 47% 11%;
   --border: 214 32% 91%;
   --muted: 215 16% 47%;
+  --primary: 217 91% 40%;
+  --primary-foreground: 0 0% 100%;
+  --surface: 214 40% 97%;
 }
 
 .dark {
@@ -14,6 +17,9 @@
   --foreground: 210 40% 98%;
   --border: 217 33% 24%;
   --muted: 215 20% 65%;
+  --primary: 217 91% 60%;
+  --primary-foreground: 222 47% 11%;
+  --surface: 222 40% 15%;
 }
 
 body {

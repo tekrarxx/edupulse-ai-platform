@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { fetchAdminDashboard, type AdminDashboard } from "@/lib/dashboard";
 import { AddUserForm } from "@/components/add-user-form";
+import { DashboardShell } from "@/components/dashboard-shell";
 
 const _ADMIN_ROLES = new Set(["SCHOOL_ADMIN", "TENANT_ADMIN", "SUPER_ADMIN"]);
 
@@ -43,17 +44,7 @@ export default function AdminDashboardPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-6 p-8">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Kurum Panosu</h1>
-        <button
-          onClick={() => logout().then(() => router.push("/login"))}
-          className="w-fit rounded-md border border-border px-4 py-2 text-sm"
-        >
-          Çıkış yap
-        </button>
-      </div>
-
+    <DashboardShell title="Kurum Panosu" onLogout={() => logout().then(() => router.push("/login"))}>
       {error && <p className="text-sm text-red-700">{error}</p>}
 
       {accessToken && <AddUserForm accessToken={accessToken} onCreated={reloadDashboard} />}
@@ -105,7 +96,7 @@ export default function AdminDashboardPage() {
           </section>
         </div>
       )}
-    </main>
+    </DashboardShell>
   );
 }
 

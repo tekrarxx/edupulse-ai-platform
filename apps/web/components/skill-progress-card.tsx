@@ -54,7 +54,7 @@ export function SkillProgressCard({ skill, accessToken }: { skill: SkillProgress
         <button
           onClick={handleExplain}
           disabled={loading}
-          className="mt-1 w-fit rounded-md border border-border px-3 py-1.5 text-sm disabled:opacity-50"
+          className="mt-1 w-fit rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
         >
           {loading ? "Oluşturuluyor..." : "Bu konuyu açıkla"}
         </button>

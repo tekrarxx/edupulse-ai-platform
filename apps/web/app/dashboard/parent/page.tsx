@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { fetchMyChildren, fetchStudentDashboard, type ParentChild, type StudentDashboard } from "@/lib/dashboard";
 import { SkillProgressCard } from "@/components/skill-progress-card";
+import { DashboardShell } from "@/components/dashboard-shell";
 
 export default function ParentDashboardPage() {
   const { user, accessToken, status, logout } = useAuth();
@@ -53,17 +54,7 @@ export default function ParentDashboardPage() {
   const selectedChild = children?.find((c) => c.student_user_id === selectedChildId) ?? null;
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-6 p-8">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Veli Panosu</h1>
-        <button
-          onClick={() => logout().then(() => router.push("/login"))}
-          className="w-fit rounded-md border border-border px-4 py-2 text-sm"
-        >
-          Çıkış yap
-        </button>
-      </div>
-
+    <DashboardShell title="Veli Panosu" onLogout={() => logout().then(() => router.push("/login"))}>
       {error && <p className="text-sm text-red-700">{error}</p>}
 
       {children && children.length === 0 && (
@@ -80,7 +71,7 @@ export default function ParentDashboardPage() {
                 setSelectedChildId(child.student_user_id);
               }}
               className={`rounded-md border px-3 py-1.5 text-sm ${
-                child.student_user_id === selectedChildId ? "border-foreground font-medium" : "border-border"
+                child.student_user_id === selectedChildId ? "border-primary font-medium text-primary" : "border-border"
               }`}
             >
               {child.display_name}
@@ -115,6 +106,6 @@ export default function ParentDashboardPage() {
           )}
         </div>
       )}
-    </main>
+    </DashboardShell>
   );
 }

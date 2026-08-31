@@ -104,7 +104,7 @@ export function AddUserForm({ accessToken, onCreated }: { accessToken: string; o
       <button
         type="submit"
         disabled={submitting}
-        className="mt-2 w-fit rounded-md border border-border px-4 py-2 text-sm disabled:opacity-50"
+        className="mt-2 w-fit rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
       >
         {submitting ? "Oluşturuluyor..." : "Oluştur"}
       </button>

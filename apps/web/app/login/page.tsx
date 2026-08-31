@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { AuthApiError, useAuth } from "@/lib/auth-context";
+import { AuthShell } from "@/components/marketing/auth-shell";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -29,13 +30,13 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-6 p-8">
+    <AuthShell>
       <div>
         <h1 className="text-2xl font-semibold">Giriş yap</h1>
         <p className="text-sm text-muted">EduPulse AI hesabınla devam et.</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">
         <label className="flex flex-col gap-1 text-sm">
           E-posta
           <input
@@ -43,7 +44,7 @@ export default function LoginPage() {
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="rounded-md border border-border px-3 py-2"
+            className="rounded-md border border-border px-3 py-2 focus:border-primary focus:outline-none"
             autoComplete="email"
           />
         </label>
@@ -54,7 +55,7 @@ export default function LoginPage() {
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="rounded-md border border-border px-3 py-2"
+            className="rounded-md border border-border px-3 py-2 focus:border-primary focus:outline-none"
             autoComplete="current-password"
           />
         </label>
@@ -64,18 +65,18 @@ export default function LoginPage() {
         <button
           type="submit"
           disabled={submitting}
-          className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-60"
+          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60"
         >
           {submitting ? "Giriş yapılıyor…" : "Giriş yap"}
         </button>
       </form>
 
-      <p className="text-sm text-muted">
+      <p className="mt-6 text-sm text-muted">
         Hesabın yok mu?{" "}
-        <a href="/register" className="underline">
+        <a href="/register" className="font-medium text-primary underline">
           Kayıt ol
         </a>
       </p>
-    </main>
+    </AuthShell>
   );
 }
