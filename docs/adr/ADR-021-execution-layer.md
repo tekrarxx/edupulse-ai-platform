@@ -88,3 +88,23 @@ answers "which question, for which decision"; it creates nothing.
 - Adding a task mapping for a currently-excluded action (e.g. once
   `WORKED_EXAMPLE` content exists) is a one-line addition to
   `_ACTION_TASK_MAPPING`, not a redesign.
+
+## Addendum (2026-09-01): Client-Side Gap Behind the Server-Side Gate
+
+Found by browsing the parent dashboard live, not by inspection: the
+server-side self-only check (`GET /decisions/{id}/task` 403s a non-owning
+caller, described above) was always correct, but `SkillProgressCard`
+(`apps/web/components/`) is shared between a student's own dashboard and
+a parent's read-only view of a linked child — the "Başla" button rendered
+on both, so a parent always saw a button that would 403 on click, surfaced
+as a misleading "couldn't load, try again later" message for what is
+actually a permanent permission fact, not a transient failure.
+
+Fixed with a `canExecute` prop on `SkillProgressCard`, defaulting to
+`false` — only `apps/web/app/dashboard/page.tsx` (the student's own view)
+opts in. This is a UX-honesty fix (§90), not a security fix: the 403 was
+always enforced correctly server-side; no unauthorized action was ever
+possible, only a confusing message shown to someone who was correctly
+blocked. A general lesson for future consumers of this shared component
+(a future teacher-facing student-detail view, say): default any
+new "act on the student's behalf" affordance to off, same as this one.
