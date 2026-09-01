@@ -167,3 +167,34 @@ after.
 This addendum does not change the ADR's core decision or its remaining
 "what is explicitly not built" list (§Billing) — it is the second data
 point closing trigger 1, not a new architecture.
+
+## Addendum 2 (2026-09-01): Self-Service Plan Switching
+
+The original "What Is Explicitly Not Built" section named this directly:
+"No self-service plan-upgrade UI or endpoint — plan assignment is
+currently an operational/admin action... not a customer-facing flow,"
+closeable "once there is a second real tier a tenant would plausibly
+self-upgrade into." The `school` plan (`scripts/seed_school_plan.py`) is
+that second tier, so this closes it:
+
+- `entitlement_service.list_plans`/`get_current_plan`/`switch_tenant_plan`
+  — the same "only entitlement_service reads `Tenant.plan_id`" invariant
+  this ADR established stays intact; switching is a new function in the
+  same module, not a new reader of the plan tables elsewhere.
+- `GET /plans`, `GET /plans/tenant/current`, `PUT /plans/tenant`
+  (`app/api/routes/plan.py`) — restricted to `TENANT_ADMIN`/
+  `SCHOOL_ADMIN`/`SUPER_ADMIN` of the caller's own tenant (§51: no
+  client-supplied tenant_id anywhere in the request). Every switch writes
+  a `tenant.plan_changed` audit record (§131).
+- **Deliberately symmetric, not upgrade-only**: since no `Subscription`/
+  `Invoice`/`Payment` exists (§116, still true), there is no payment event
+  to gate an upgrade on — restricting this to "upgrade" direction only
+  would fabricate a distinction the system cannot actually enforce
+  (§105). A real payment gate remains this ADR's second falsifiability
+  trigger, unfired.
+- Admin dashboard gained a plan-switcher control
+  (`apps/web/components/plan-switcher.tsx`) alongside the existing
+  AI-quota/seat-usage display.
+
+This does not change what ADR-016 still says is unbuilt — `Subscription`/
+`Invoice`/`Payment` remain genuinely absent.

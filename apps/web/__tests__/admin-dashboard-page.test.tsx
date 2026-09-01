@@ -32,6 +32,13 @@ jest.mock("@/lib/dashboard", () => ({
   fetchAdminDashboard: (...args: unknown[]) => fetchAdminDashboardMock(...args),
 }));
 
+// PlanSwitcher fetches on mount unconditionally — mocked here so this
+// page's own tests never make a real network call for it.
+jest.mock("@/lib/plan", () => ({
+  fetchPlans: jest.fn().mockResolvedValue([]),
+  switchTenantPlan: jest.fn(),
+}));
+
 const dashboardResponse = {
   tenant_id: "tenant1",
   active_student_count: 12,

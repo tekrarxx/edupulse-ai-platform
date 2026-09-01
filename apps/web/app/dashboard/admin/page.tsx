@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { fetchAdminDashboard, type AdminDashboard } from "@/lib/dashboard";
 import { AddUserForm } from "@/components/add-user-form";
+import { PlanSwitcher } from "@/components/plan-switcher";
 import { DashboardShell } from "@/components/dashboard-shell";
 
 const _ADMIN_ROLES = new Set(["SCHOOL_ADMIN", "TENANT_ADMIN", "SUPER_ADMIN"]);
@@ -63,6 +64,9 @@ export default function AdminDashboardPage() {
               {dashboard.tenant_user_limit !== null && ` / ${dashboard.tenant_user_limit} kullanıcı limiti`}
               {dashboard.tenant_user_limit === null && " (sınırsız)"}.
             </p>
+            {accessToken && (
+              <PlanSwitcher accessToken={accessToken} currentPlanName={dashboard.plan_name} onSwitched={reloadDashboard} />
+            )}
           </section>
 
           <section className="grid grid-cols-2 gap-4">

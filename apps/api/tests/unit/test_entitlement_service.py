@@ -157,6 +157,46 @@ def test_enforce_tenant_user_seat_limit_raises_once_the_limit_is_reached(db: Ses
         pass
 
 
+# --- Self-service plan switching (ROADMAP.md P2, ADR-016's own trigger) ---
+
+
+def test_list_plans_includes_the_seeded_free_plan(db: Session) -> None:
+    slugs = {p.slug for p in entitlement_service.list_plans(db)}
+    assert "free" in slugs
+
+
+def test_get_current_plan_falls_back_to_free_for_a_tenant_with_no_plan_id(db: Session) -> None:
+    tenant = _make_tenant(db, plan_id=None)
+    plan = entitlement_service.get_current_plan(db, tenant_id=tenant.id)
+    assert plan is not None
+    assert plan.slug == "free"
+
+
+def test_switch_tenant_plan_updates_the_tenants_plan_id(db: Session) -> None:
+    plan = Plan(slug=f"target-{uuid.uuid4().hex[:8]}", name="Target Plan")
+    db.add(plan)
+    db.commit()
+    tenant = _make_tenant(db, plan_id=None)
+    user = _make_user(db, tenant=tenant)
+
+    result = entitlement_service.switch_tenant_plan(db, tenant_id=tenant.id, actor_user_id=user.id, plan_slug=plan.slug)
+
+    assert result.id == plan.id
+    db.refresh(tenant)
+    assert tenant.plan_id == plan.id
+
+
+def test_switch_tenant_plan_raises_plan_not_found_for_an_unknown_slug(db: Session) -> None:
+    tenant = _make_tenant(db, plan_id=None)
+    user = _make_user(db, tenant=tenant)
+
+    try:
+        entitlement_service.switch_tenant_plan(db, tenant_id=tenant.id, actor_user_id=user.id, plan_slug="does-not-exist")
+        assert False, "expected PlanNotFound"
+    except entitlement_service.PlanNotFound:
+        pass
+
+
 def test_enforce_tenant_user_seat_limit_never_raises_when_unlimited(db: Session) -> None:
     plan = Plan(slug=f"unlimited-seats-{uuid.uuid4().hex[:8]}", name="Unlimited Seats Plan")
     db.add(plan)

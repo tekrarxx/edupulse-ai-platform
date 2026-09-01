@@ -15,6 +15,7 @@ from app.models.ai_usage import AIUsageRecord
 from app.models.plan import Entitlement, EntitlementKey, Plan
 from app.models.tenant import Tenant
 from app.models.user import User
+from app.services.audit_service import record_audit as _record_audit
 
 _DEFAULT_PLAN_SLUG = "free"
 
@@ -24,6 +25,10 @@ class EntitlementError(Exception):
 
 
 class QuotaExceeded(EntitlementError):
+    pass
+
+
+class PlanNotFound(EntitlementError):
     pass
 
 
@@ -99,3 +104,38 @@ def enforce_tenant_user_seat_limit(db: Session, *, tenant_id: str) -> None:
     used, limit = get_tenant_user_seat_usage(db, tenant_id=tenant_id)
     if limit is not None and used >= limit:
         raise QuotaExceeded()
+
+
+# --- Self-service plan switching (ROADMAP.md P2, ADR-016's own trigger:
+# "worth doing once there is a second real tier a tenant would plausibly
+# self-upgrade into" — the "school" plan, scripts/seed_school_plan.py,
+# is that second tier). Still no money changes hands (§116, ADR-016's
+# "What Is Explicitly Not Built") — this removes the "needs an operator to
+# run a script" friction, nothing more. A real payment gate is separate,
+# future work (ADR-016's second falsifiability trigger). ---
+
+
+def list_plans(db: Session) -> list[Plan]:
+    return db.query(Plan).order_by(Plan.name).all()
+
+
+def get_current_plan(db: Session, *, tenant_id: str) -> Plan | None:
+    plan_id = _resolve_plan_id(db, tenant_id=tenant_id)
+    return db.get(Plan, plan_id) if plan_id is not None else None
+
+
+def switch_tenant_plan(db: Session, *, tenant_id: str, actor_user_id: str, plan_slug: str) -> Plan:
+    """Self-service (§60/§63): any TENANT_ADMIN/SCHOOL_ADMIN/SUPER_ADMIN of
+    the tenant may switch to any existing Plan, in either direction — there
+    is no payment gate to enforce (§116), so this is honestly symmetric
+    rather than fabricating an upgrade-only restriction nothing backs."""
+    plan = db.query(Plan).filter(Plan.slug == plan_slug).first()
+    if plan is None:
+        raise PlanNotFound()
+
+    tenant = db.get(Tenant, tenant_id)
+    tenant.plan_id = plan.id
+    _record_audit(db, tenant_id=tenant_id, actor_user_id=actor_user_id, action="tenant.plan_changed", target_type="tenant", target_id=tenant_id)
+    db.commit()
+    db.refresh(plan)
+    return plan

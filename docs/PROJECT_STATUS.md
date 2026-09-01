@@ -16,12 +16,13 @@ not the SQLite fallback), same commands `make test`/`make test-api`/
 
 | Check | Result |
 |---|---|
-| `pytest` (`apps/api`) | **247 passed**, 0 failed |
+| `pytest` (`apps/api`) | **258 passed**, 0 failed |
 | `ruff check .` (`apps/api`) | All checks passed |
-| `npm test -- --watchAll=false` (`apps/web`) | **37 passed**, 0 failed, 11 suites |
+| `npm test -- --watchAll=false` (`apps/web`) | **40 passed**, 0 failed, 12 suites |
 | `npx tsc --noEmit` (`apps/web`) | Clean, no errors |
 
-(Updated after this session's execution-layer slice, ADR-021 — see ROADMAP.md P1.)
+(Updated after this session's execution-layer slice, ADR-021, and the
+self-service plan-switching slice — see ROADMAP.md P1/P2.)
 
 Backend test layout: `apps/api/tests/{unit,integration,api,security,e2e,load}/`,
 32 test files, ~232 `def test_...` functions. Frontend: `apps/web/__tests__/`,
@@ -90,8 +91,10 @@ Backend test layout: `apps/api/tests/{unit,integration,api,security,e2e,load}/`,
   `entitlement_service.py`, ADR-016 (+ this session's addendum). Two gated
   keys: `AI_EXPLANATIONS_MONTHLY_LIMIT` (free plan: 10/month) and
   `MAX_TENANT_USERS` (free plan: 5 seats, migration `0012`, this session).
-  No `Subscription`/`Invoice`/`Payment` model exists — genuinely unbuilt,
-  not faked (§105); see Deferred below.
+  Self-service plan switching (`GET /plans`, `PUT /plans/tenant`, this
+  session) lets tenant staff switch plans without an operator script — still
+  no payment gate (§116). No `Subscription`/`Invoice`/`Payment` model
+  exists — genuinely unbuilt, not faked (§105); see Deferred below.
 - **Security** (§78): argon2 password hashing, JWT access + rotated
   refresh tokens (httpOnly cookie, ADR-011), rate limiting (login, tenant
   user creation, AI explanations), security headers, escalation audit
@@ -110,7 +113,7 @@ already closed:
 | ~~Execution layer~~ — **CLOSED (this session, ADR-021)**: `GET /decisions/{id}/task` (`app/services/task_service.py`) resolves a Decision to a real Question; the student dashboard's "Başla" button submits it through the existing `POST /assessment/attempts`. Residual: 6/12 action types are deliberately not question-answering (still label-only), and skills with no question in the resolved facet get an honest `no_question_available`, not a fabricated task. | — | See ADR-021. |
 | Role/tenant-education-policy authorization | Deliberate deferral (ADR-013 addendum 2) | No second real tenant has asked for different policy behavior yet. |
 | Billing (`Subscription`/`Invoice`/`Payment`) | Genuinely unbuilt | ADR-016: §116 doesn't require it for MVP; building it before a paying customer exists risks unused plumbing (§125/§141). Trigger: real money needs to move. |
-| Self-service plan upgrade | Unbuilt | Plan assignment is an admin/script operation today (`scripts/seed_school_plan.py`), matching how `ParentStudentLink` and admin-enrollment work. |
+| ~~Self-service plan switching~~ — **CLOSED (this session)**: `GET /plans`, `PUT /plans/tenant` (tenant staff only, §51) plus an admin-dashboard UI. Still no payment gate — symmetric upgrade/downgrade, honest about §116. | — | — |
 | Per-role/per-seat entitlements beyond `MAX_TENANT_USERS` | Not needed yet | Only two keys exist because only two real features need gating; a third is added the same narrow way (ADR-016 §Consequences), not speculatively. |
 | Open-ended (non-auto-gradable) delayed-retention grading | Deferred (ADR-014) | v1 requires auto-gradable questions so falsification has a definite outcome. |
 

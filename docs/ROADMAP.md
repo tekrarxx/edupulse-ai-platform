@@ -72,11 +72,16 @@ speculative new feature list.
   established (new key + one `enforce_*` function + one call site). No
   candidate feature is named yet; add one only when a real feature needs
   gating (ADR-016 §Consequences), not preemptively.
-- **Self-service plan upgrade flow.** Today plan assignment is an
-  admin/script action (`scripts/seed_school_plan.py`). Turning this into
-  a customer-facing upgrade path is explicitly still unbuilt per ADR-016
-  §"What Is Explicitly Not Built" — worth doing once there is a second
-  real tier a tenant would plausibly self-upgrade into.
+- ~~**Self-service plan switching flow.**~~ — **CLOSED (this session)**:
+  `GET /plans`, `GET /plans/tenant/current`, `PUT /plans/tenant`
+  (`app/services/entitlement_service.py`'s `list_plans`/`get_current_plan`/
+  `switch_tenant_plan`) let a TENANT_ADMIN/SCHOOL_ADMIN/SUPER_ADMIN switch
+  their own tenant's plan without an operator running
+  `scripts/seed_school_plan.py`. Admin dashboard has a plan-switcher UI.
+  **Still no payment gate** (§116) — this is honestly symmetric
+  (upgrade/downgrade both just work, since nothing enforces payment
+  either way yet), not a checkout flow; real billing remains the P3 item
+  below.
 
 ### P3 — later, real money required first
 - **Billing domain** (`Subscription`, `Invoice`, `Payment`). ADR-016's
