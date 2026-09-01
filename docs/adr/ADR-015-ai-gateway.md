@@ -270,6 +270,41 @@ valid explanation, correct `AIUsageRecord`). This is the first genuine
 end-to-end proof that `OllamaProvider` and the full request path work, not
 just the `FakeProvider`-backed test suite.
 
+## Addendum (2026-09-01): `key_points` Stringified-List Normalization
+
+Re-exercising the same live path (`docker compose up`, real Ollama,
+`llama3.2:1b`) this session — via both direct `curl` and the actual
+browser UI — showed the "malformed-output case" the prior addendum called
+"correctly handled" is not rare: sampling the same prompt repeatedly
+(temperature 0.7) showed roughly half of all completions put
+`key_points` as a bracketed, comma-separated **string**
+(`"[F=ma, F=ma]"`) rather than a JSON array, even with `format: "json"`
+forcing syntactically valid JSON. `format: "json"` guarantees valid JSON
+syntax, not that a 1B model reliably nests an array where the schema asks
+for one.
+
+**Decision**: `SkillExplanationOutput.key_points` (`app/ai/prompts.py`)
+gained a `field_validator(mode="before")` that recognizes exactly this one
+shape — a string starting with `[` and ending with `]` — and splits it on
+commas into a real list, stripping stray quotes/whitespace per item. This
+extracts the same content the model already produced; it never invents a
+key point (§105). Every other shape (a genuine array, an unparseable
+prose string, an empty bracket pair) passes through unchanged and is
+still rejected by `SchemaValidationError` exactly as before (§47/§90) —
+confirmed by `tests/unit/test_prompts.py`, including a case with embedded
+commas inside a numbered-sentence string that legitimately still fails
+(over `max_length=5` after splitting, correctly rejected rather than
+silently producing garbage key points).
+
+**What this does not do**: no retry-on-schema-failure was added to
+`AIGateway.generate` — `test_ai_gateway.py`'s existing
+`test_provider_failure_is_wrapped_and_recorded` explicitly asserts (and
+documents) "the gateway itself does not retry" as a deliberate contract,
+and changing that is a bigger decision than a one-shape normalization fix
+deserves. Live-verified after this change: a call that previously 502'd
+on this exact `key_points` shape now returns 200 with a real explanation,
+through the actual browser UI, not just `curl`.
+
 ## Mandatory Tests
 
 - Gateway success path: valid structured output → correct

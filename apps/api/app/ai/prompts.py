@@ -8,10 +8,11 @@ free-text, attempt responses, or any PII. This is a structural enforcement
 of ADR-015 §3's data-minimization scope, not just a documented convention:
 there is no parameter through which anything else could reach the prompt.
 """
+import re
 from dataclasses import dataclass
 from typing import Callable
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class SkillExplanationOutput(BaseModel):
@@ -21,6 +22,25 @@ class SkillExplanationOutput(BaseModel):
 
     explanation: str = Field(min_length=1, max_length=2000)
     key_points: list[str] = Field(min_length=1, max_length=5)
+
+    @field_validator("key_points", mode="before")
+    @classmethod
+    def _tolerate_a_stringified_list(cls, value: object) -> object:
+        """A real, live-verified failure mode of small local models (§43 —
+        Ollama's `llama3.2:1b` is not assumed reliable): `format: "json"`
+        guarantees syntactically valid JSON, but not that `key_points`
+        lands as a JSON array rather than one string holding a bracketed,
+        comma-separated list, e.g. `"[F=ma, F=ma]"`. This normalizes only
+        that one specific, unambiguous shape — extracting the same content
+        the model actually produced, never inventing new points (§105) —
+        and still passes through unchanged for a genuine list or any other
+        malformed string, which SchemaValidationError continues to reject
+        rather than silently coerce (§47/§90)."""
+        if isinstance(value, str) and value.strip().startswith("[") and value.strip().endswith("]"):
+            inner = value.strip()[1:-1]
+            points = [re.sub(r'^[\s"\']+|[\s"\']+$', "", p) for p in inner.split(",")]
+            return [p for p in points if p]
+        return value
 
 
 @dataclass(frozen=True)
