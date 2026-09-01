@@ -16,7 +16,7 @@ not the SQLite fallback), same commands `make test`/`make test-api`/
 
 | Check | Result |
 |---|---|
-| `pytest` (`apps/api`) | **263 passed**, 0 failed |
+| `pytest` (`apps/api`) | **276 passed**, 0 failed |
 | `ruff check .` (`apps/api`) | All checks passed |
 | `npm test -- --watchAll=false` (`apps/web`) | **42 passed**, 0 failed, 12 suites |
 | `npx tsc --noEmit` (`apps/web`) | Clean, no errors |
@@ -78,7 +78,11 @@ Backend test layout: `apps/api/tests/{unit,integration,api,security,e2e,load}/`,
   retention-checkpoint-scheduler.json`, Phase 10 slice 3) — n8n only calls
   the real API on a schedule, no domain logic in the workflow itself (§92).
 - **AI Gateway** (§43–49): `app/ai/gateway.py`, `providers/ollama.py`,
-  `safety.py`, `prompts.py`. One provider (Ollama, local-first, §44), one
+  `router.py`, `providers/openai_compatible.py`, `safety.py`, `prompts.py`.
+  Ollama is always the primary provider (local-first, §44); `ModelRouter`
+  (ADR-022, this session) falls back to an optional OpenAI-Chat-
+  Completions-shaped second provider only when fully configured — never
+  exercised against a real API key yet, documented honestly. One
   capability so far (`AIUsageCapability.SKILL_EXPLANATION`). Every call
   writes an `AIUsageRecord` (provider, model, prompt name+version, tokens,
   latency, success) regardless of outcome — real usage/cost accounting

@@ -93,11 +93,18 @@ speculative new feature list.
 - **Open-ended (non-auto-gradable) delayed-retention grading**
   (ADR-014's narrow v1 constraint). Revisit once a real pilot's content
   needs free-response retention checks, not before.
-- **A second AI provider** beyond Ollama (§140 routing strategy). The
-  `OLLAMA_BASE_URL` swap point already exists in the AI Gateway
-  (ADR-015); adding a second provider is infrastructure-adapter work,
-  not a redesign — but there is no current cost/quality/latency pressure
-  forcing it yet.
+- ~~**A second AI provider**~~ — **CLOSED (this session, ADR-022)**, built
+  at explicit user direction rather than new cost/quality/latency pressure
+  (same footing ADR-015 itself started from). `app/ai/router.py`'s
+  `ModelRouter` falls back from Ollama to an optional
+  `OpenAICompatibleProvider` (any OpenAI Chat-Completions-shaped endpoint)
+  only when all three `SECONDARY_AI_PROVIDER_*` settings are configured
+  together; unconfigured by default (§136), Ollama-only behavior is
+  unchanged. **Residual scope**: the new provider has never been exercised
+  against a real API key (documented honestly, same as Ollama's own
+  equivalent gap when first built); §140's cost/latency/quality-based
+  routing beyond fixed-order fallback remains unbuilt — add it when a real
+  routing decision is actually needed.
 
 ## Explicitly not on this roadmap
 
