@@ -72,3 +72,5 @@ class AdminDashboardOut(BaseModel):
     plan_name: str
     ai_explanations_used_this_month: int
     ai_explanations_monthly_limit: int | None
+    tenant_user_count: int
+    tenant_user_limit: int | None

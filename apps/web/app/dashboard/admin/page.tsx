@@ -58,6 +58,11 @@ export default function AdminDashboardPage() {
               {dashboard.ai_explanations_monthly_limit !== null && ` / ${dashboard.ai_explanations_monthly_limit} limit`}
               {dashboard.ai_explanations_monthly_limit === null && " (sınırsız)"}.
             </p>
+            <p className="mt-1 text-sm text-muted">
+              {dashboard.tenant_user_count} kullanıcı
+              {dashboard.tenant_user_limit !== null && ` / ${dashboard.tenant_user_limit} kullanıcı limiti`}
+              {dashboard.tenant_user_limit === null && " (sınırsız)"}.
+            </p>
           </section>
 
           <section className="grid grid-cols-2 gap-4">

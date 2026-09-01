@@ -20,7 +20,7 @@ from app.models.plan import Plan
 from app.models.tenant import Tenant, TenantType
 from app.models.user import PasswordResetToken, Role, User, UserSession
 from app.schemas.auth import CreateTenantUserRequest, LoginRequest, RegisterRequest
-from app.services import email_service
+from app.services import email_service, entitlement_service
 from app.services.audit_service import record_audit as _record_audit
 
 _DEFAULT_PLAN_SLUG = "free"
@@ -70,6 +70,13 @@ class InsufficientRoleForUserCreation(AuthError):
     pass
 
 
+class TenantSeatLimitExceeded(AuthError):
+    """The tenant's plan (ADR-016) has reached its `MAX_TENANT_USERS`
+    entitlement — the caller must upgrade the tenant's plan before enrolling
+    another user, an operational/admin step, not one this call performs."""
+    pass
+
+
 def register(db: Session, request: RegisterRequest) -> User:
     existing = db.query(User).filter(User.email == request.email).first()
     if existing is not None:
@@ -108,6 +115,13 @@ def create_tenant_user(
     tenant_id — never a client-supplied one (§51)."""
     if request.role not in _ROLE_CREATION_MATRIX.get(actor_role, frozenset()):
         raise InsufficientRoleForUserCreation()
+
+    # §48/§60: checked before the write, same discipline as the AI quota
+    # check in explanation_service.py.
+    try:
+        entitlement_service.enforce_tenant_user_seat_limit(db, tenant_id=tenant_id)
+    except entitlement_service.QuotaExceeded:
+        raise TenantSeatLimitExceeded()
 
     existing = db.query(User).filter(User.email == request.email).first()
     if existing is not None:

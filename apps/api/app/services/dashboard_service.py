@@ -374,6 +374,8 @@ class AdminDashboard:
     # None = unlimited (ADR-016 — absence of a configured entitlement is
     # never a fabricated restriction).
     ai_explanations_monthly_limit: int | None
+    tenant_user_count: int
+    tenant_user_limit: int | None
 
 
 def get_admin_dashboard(db: Session, *, tenant_id: str) -> AdminDashboard:
@@ -405,6 +407,7 @@ def get_admin_dashboard(db: Session, *, tenant_id: str) -> AdminDashboard:
     plan = db.get(Plan, tenant.plan_id) if tenant is not None and tenant.plan_id is not None else None
     plan_name = plan.name if plan is not None else "Free"  # matches entitlement_service's own null-plan_id fallback
     ai_explanations_used, ai_explanations_limit = entitlement_service.get_ai_explanation_usage(db, tenant_id=tenant_id)
+    tenant_user_count, tenant_user_limit = entitlement_service.get_tenant_user_seat_usage(db, tenant_id=tenant_id)
 
     return AdminDashboard(
         tenant_id=tenant_id,
@@ -429,4 +432,6 @@ def get_admin_dashboard(db: Session, *, tenant_id: str) -> AdminDashboard:
         plan_name=plan_name,
         ai_explanations_used_this_month=ai_explanations_used,
         ai_explanations_monthly_limit=ai_explanations_limit,
+        tenant_user_count=tenant_user_count,
+        tenant_user_limit=tenant_user_limit,
     )

@@ -104,6 +104,8 @@ export type AdminDashboard = {
   plan_name: string;
   ai_explanations_used_this_month: number;
   ai_explanations_monthly_limit: number | null;
+  tenant_user_count: number;
+  tenant_user_limit: number | null;
 };
 
 export async function fetchAdminDashboard(accessToken: string): Promise<AdminDashboard> {

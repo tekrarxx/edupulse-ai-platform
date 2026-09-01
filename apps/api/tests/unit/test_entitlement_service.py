@@ -115,3 +115,54 @@ def test_enforce_ai_explanation_quota_never_raises_when_unlimited(db: Session) -
     tenant = _make_tenant(db, plan_id=plan.id)
 
     entitlement_service.enforce_ai_explanation_quota(db, tenant_id=tenant.id)  # no Entitlement row at all -> no raise
+
+
+# --- max_tenant_users seat limit (Roadmap Stage E, ADR-016 second gated feature) ---
+
+
+def test_get_tenant_user_seat_usage_falls_back_to_the_free_plan(db: Session) -> None:
+    tenant = _make_tenant(db, plan_id=None)
+    _make_user(db, tenant=tenant)
+
+    used, limit = entitlement_service.get_tenant_user_seat_usage(db, tenant_id=tenant.id)
+    assert used == 1
+    assert limit == 5  # migration 0012's seeded free-plan seat limit
+
+
+def test_enforce_tenant_user_seat_limit_allows_under_the_limit(db: Session) -> None:
+    plan = Plan(slug=f"seats-{uuid.uuid4().hex[:8]}", name="Small Seats Plan")
+    db.add(plan)
+    db.flush()
+    db.add(Entitlement(plan_id=plan.id, key=EntitlementKey.MAX_TENANT_USERS, value=2))
+    db.commit()
+    tenant = _make_tenant(db, plan_id=plan.id)
+    _make_user(db, tenant=tenant)  # 1 used, 2 allowed
+
+    entitlement_service.enforce_tenant_user_seat_limit(db, tenant_id=tenant.id)  # no raise
+
+
+def test_enforce_tenant_user_seat_limit_raises_once_the_limit_is_reached(db: Session) -> None:
+    plan = Plan(slug=f"seats2-{uuid.uuid4().hex[:8]}", name="Small Seats Plan 2")
+    db.add(plan)
+    db.flush()
+    db.add(Entitlement(plan_id=plan.id, key=EntitlementKey.MAX_TENANT_USERS, value=1))
+    db.commit()
+    tenant = _make_tenant(db, plan_id=plan.id)
+    _make_user(db, tenant=tenant)  # 1 used, 1 allowed -> at the limit
+
+    try:
+        entitlement_service.enforce_tenant_user_seat_limit(db, tenant_id=tenant.id)
+        assert False, "expected QuotaExceeded"
+    except entitlement_service.QuotaExceeded:
+        pass
+
+
+def test_enforce_tenant_user_seat_limit_never_raises_when_unlimited(db: Session) -> None:
+    plan = Plan(slug=f"unlimited-seats-{uuid.uuid4().hex[:8]}", name="Unlimited Seats Plan")
+    db.add(plan)
+    db.commit()
+    tenant = _make_tenant(db, plan_id=plan.id)
+    for _ in range(10):
+        _make_user(db, tenant=tenant)
+
+    entitlement_service.enforce_tenant_user_seat_limit(db, tenant_id=tenant.id)  # no Entitlement row at all -> no raise

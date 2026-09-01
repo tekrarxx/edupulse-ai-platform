@@ -40,6 +40,10 @@ class EntitlementKey(str, enum.Enum):
     never a fabricated default limit (§105)."""
 
     AI_EXPLANATIONS_MONTHLY_LIMIT = "ai_explanations_monthly_limit"
+    # Total User rows (any role) in a tenant — gates admin-initiated
+    # enrollment (POST /auth/tenant/users), the second real feature this
+    # entitlement system gates (ADR-016 Falsifiability trigger 1).
+    MAX_TENANT_USERS = "max_tenant_users"
 
 
 class Entitlement(Base):

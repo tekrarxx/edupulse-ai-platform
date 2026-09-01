@@ -202,6 +202,8 @@ def create_tenant_user(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="email_already_registered")
     except auth_service.InsufficientRoleForUserCreation:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="insufficient_role_for_target_role")
+    except auth_service.TenantSeatLimitExceeded:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="tenant_seat_limit_exceeded")
     return UserOut.model_validate(user)
 
 

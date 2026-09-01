@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { createTenantUser, type Role } from "@/lib/auth";
+import { AuthApiError, createTenantUser, type Role } from "@/lib/auth";
 
 // Only the roles a *tenant-scoped* admin might plausibly need to create
 // through this form — SUPER_ADMIN is deliberately excluded here even
@@ -39,11 +39,17 @@ export function AddUserForm({ accessToken, onCreated }: { accessToken: string; o
       setPassword("");
       setDisplayName("");
       onCreated();
-    } catch {
+    } catch (err) {
       // §90: never surface the backend's raw detail string (e.g. a
       // duplicate-email or role-escalation reason) as anything but a
-      // single, generic, actionable message.
-      setError("Kullanıcı oluşturulamadı. E-posta zaten kayıtlı olabilir veya bu rolü oluşturma yetkiniz olmayabilir.");
+      // single, generic, actionable message — except the seat-limit case,
+      // which is distinguishable by HTTP status (429) and needs a distinct,
+      // actionable message ("upgrade your plan"), not a generic one.
+      if (err instanceof AuthApiError && err.status === 429) {
+        setError("Planınızın kullanıcı sınırına ulaşıldı. Daha fazla kullanıcı eklemek için planınızı yükseltin.");
+      } else {
+        setError("Kullanıcı oluşturulamadı. E-posta zaten kayıtlı olabilir veya bu rolü oluşturma yetkiniz olmayabilir.");
+      }
     } finally {
       setSubmitting(false);
     }

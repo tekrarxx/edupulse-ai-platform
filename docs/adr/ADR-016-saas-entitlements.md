@@ -126,3 +126,44 @@ Revisit this ADR (not just tweak the numbers) when either becomes true:
 2. Real billing (money) needs to exist — at that point `Plan` gains a
    price/billing-cycle relationship to a genuine `Subscription`/`Invoice`
    domain, which is new modeling work, not an extension of this one.
+
+## Addendum (Roadmap Stage E, 2026-09-01): `max_tenant_users` — the Second Gated Feature
+
+Falsifiability trigger 1 above is now real evidence *for* the design, not
+against it: `EntitlementKey.MAX_TENANT_USERS` is a second key added the
+exact way the "Consequences" section predicted — "a new `EntitlementKey`
+member + one `enforce_*` function in `entitlement_service.py` + one call
+site — not a new subsystem." No enforcement-mechanism change was needed.
+
+**What it gates**: `POST /auth/tenant/users` (admin-initiated enrollment,
+Roadmap Stage A item 1). `entitlement_service.enforce_tenant_user_seat_limit`
+counts every `User` row (any role) in the tenant and compares against the
+plan's `MAX_TENANT_USERS` entitlement, called before the write — same
+"check before the effect happens" discipline as the AI-explanation quota
+(§48/§60), except here the resource being protected is enrollment capacity,
+not LLM spend. A rejected request maps to `429
+tenant_seat_limit_exceeded` (`app/api/routes/auth.py`), distinguishable
+from `email_already_registered` (409) and
+`insufficient_role_for_target_role` (403) — three independent rejection
+reasons, tested separately (`tests/api/test_auth.py`).
+
+**Data**: migration `0012` seeds `max_tenant_users = 5` on the existing
+`free` plan only — no schema change, since `entitlements.key` carries no
+database-level `CHECK` constraint (SQLAlchemy 2.0's `Enum` defaults
+`create_constraint` to `False`), so a new `EntitlementKey` member is a
+pure application-layer change; the migration's job is only the data row.
+The `school` plan (`scripts/seed_school_plan.py`) intentionally gets no
+row — zero `Entitlement` rows still means unlimited, the same default
+posture ADR-016's original decision established for institutional pilot
+tenants.
+
+**Dashboard**: `AdminDashboardOut.tenant_user_count`/`tenant_user_limit`
+mirror `ai_explanations_used_this_month`/`ai_explanations_monthly_limit`'s
+existing shape (`app/services/dashboard_service.py`,
+`app/services/entitlement_service.get_tenant_user_seat_usage`) — an admin
+approaching their seat limit can see it before hitting the 429, not just
+after.
+
+This addendum does not change the ADR's core decision or its remaining
+"what is explicitly not built" list (§Billing) — it is the second data
+point closing trigger 1, not a new architecture.

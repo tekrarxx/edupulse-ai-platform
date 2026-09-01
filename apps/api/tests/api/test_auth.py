@@ -312,6 +312,32 @@ def test_created_user_can_log_in_with_the_password_the_admin_set(client: TestCli
     assert login_response.status_code == 200
 
 
+# --- POST /auth/tenant/users: tenant seat limit (Roadmap Stage E, ADR-016) ---
+
+
+def test_tenant_user_creation_rejected_once_the_free_plan_seat_limit_is_reached(client: TestClient, db: Session) -> None:
+    """The free plan's max_tenant_users limit is 5 (migration 0012). The
+    seeding staff user itself counts as the 1st seat, so 4 more successful
+    creations exhaust it and the 5th attempt must be rejected."""
+    _, token, _ = _seed_staff(db, role=Role.SUPER_ADMIN)
+
+    for _ in range(4):
+        response = client.post(
+            "/auth/tenant/users",
+            json={"email": _unique_email(), "password": "correct-horse-battery", "display_name": "Seat", "role": "STUDENT"},
+            headers=_headers(token),
+        )
+        assert response.status_code == 201, response.text
+
+    over_limit_response = client.post(
+        "/auth/tenant/users",
+        json={"email": _unique_email(), "password": "correct-horse-battery", "display_name": "Over Limit", "role": "STUDENT"},
+        headers=_headers(token),
+    )
+    assert over_limit_response.status_code == 429
+    assert over_limit_response.json()["detail"] == "tenant_seat_limit_exceeded"
+
+
 def _capture_sent_emails(monkeypatch) -> list[dict]:
     sent: list[dict] = []
 

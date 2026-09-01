@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.models.ai_usage import AIUsageRecord
 from app.models.plan import Entitlement, EntitlementKey, Plan
 from app.models.tenant import Tenant
+from app.models.user import User
 
 _DEFAULT_PLAN_SLUG = "free"
 
@@ -73,5 +74,28 @@ def enforce_ai_explanation_quota(db: Session, *, tenant_id: str) -> None:
     tenant never pays the cost of a real LLM call for a request that will
     be rejected anyway (§48 AI cost control)."""
     used, limit = get_ai_explanation_usage(db, tenant_id=tenant_id)
+    if limit is not None and used >= limit:
+        raise QuotaExceeded()
+
+
+def _count_tenant_users(db: Session, *, tenant_id: str) -> int:
+    return db.query(User).filter(User.tenant_id == tenant_id).count()
+
+
+def get_tenant_user_seat_usage(db: Session, *, tenant_id: str) -> tuple[int, int | None]:
+    """(used_seats, seat_limit) — mirrors get_ai_explanation_usage's shape so
+    the admin dashboard can display both the same way. `limit=None` means
+    unlimited (§60)."""
+    limit = get_entitlement_value(db, tenant_id=tenant_id, key=EntitlementKey.MAX_TENANT_USERS)
+    used = _count_tenant_users(db, tenant_id=tenant_id)
+    return used, limit
+
+
+def enforce_tenant_user_seat_limit(db: Session, *, tenant_id: str) -> None:
+    """Checked before admin-initiated enrollment (auth_service.py) so a
+    tenant at its plan's seat limit cannot create another account until it
+    upgrades — same "check before the write, not after" discipline as
+    enforce_ai_explanation_quota (§48/§60)."""
+    used, limit = get_tenant_user_seat_usage(db, tenant_id=tenant_id)
     if limit is not None and used >= limit:
         raise QuotaExceeded()

@@ -405,6 +405,9 @@ def test_admin_dashboard_shows_tenant_wide_counts(
     assert body["plan_name"] == "Free"
     assert body["ai_explanations_monthly_limit"] == 10
     assert body["ai_explanations_used_this_month"] == 0
+    # ADR-016 second gated feature (Roadmap Stage E): admin + 2 students + 1 teacher = 4 users.
+    assert body["tenant_user_count"] == 4
+    assert body["tenant_user_limit"] == 5
 
 
 def test_admin_dashboard_is_tenant_scoped(
