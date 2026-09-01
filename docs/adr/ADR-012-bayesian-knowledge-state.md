@@ -1,11 +1,15 @@
 # ADR-012: Bayesian Knowledge State (Beta-Binomial per Student/Skill/Facet)
 
-Status: Proposed
+Status: Accepted
 Date: 2026-08-28
 Related: CLAUDE.md §24–§28, §31, §39, §42, §87, §99
 
-This ADR is Step 5A of Phase 5 (§113 P4). No implementation code accompanies
-it. It documents the mathematical model before any code is written (§25).
+This ADR was written as Step 5A of Phase 5 (§113 P4), documenting the
+mathematical model before any code was written (§25). The model has since
+been implemented, tested, and in production use since migration `0005`
+(`app/services/knowledge_state_service.py`) — the header is updated to
+`Accepted` to match every other ADR in the repo (docs/PROJECT_STATUS.md's
+Phase 0 audit, 2026-09-01).
 
 ## Context
 
