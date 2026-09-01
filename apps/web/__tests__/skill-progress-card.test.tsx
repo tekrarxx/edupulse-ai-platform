@@ -82,8 +82,17 @@ describe("SkillProgressCard execution layer (§113 P8+)", () => {
   });
 
   it("does not show a Başla button when there is no decision yet", () => {
-    render(<SkillProgressCard skill={skill} accessToken="fake-token" />);
+    render(<SkillProgressCard skill={skill} accessToken="fake-token" canExecute />);
     expect(screen.queryByRole("button", { name: "Başla" })).not.toBeInTheDocument();
+  });
+
+  it("does not show a Başla button for a viewer other than the skill's own student (e.g. a parent), even with a real decision", () => {
+    // §51/§90: a parent viewing their child's card would always get a 403
+    // from GET /decisions/{id}/task — canExecute defaults to false so this
+    // shared component never shows a button that can't work for the viewer.
+    render(<SkillProgressCard skill={skillWithDecision} accessToken="fake-token" />);
+    expect(screen.queryByRole("button", { name: "Başla" })).not.toBeInTheDocument();
+    expect(fetchDecisionTaskMock).not.toHaveBeenCalled();
   });
 
   it("fetches and answers the real task behind the decision, then shows the result", async () => {
@@ -108,7 +117,7 @@ describe("SkillProgressCard execution layer (§113 P8+)", () => {
       evaluated_at: "2026-09-01T00:00:01Z",
     });
 
-    render(<SkillProgressCard skill={skillWithDecision} accessToken="fake-token" />);
+    render(<SkillProgressCard skill={skillWithDecision} accessToken="fake-token" canExecute />);
     fireEvent.click(screen.getByRole("button", { name: "Başla" }));
 
     await waitFor(() => expect(fetchDecisionTaskMock).toHaveBeenCalledWith("fake-token", "d1"));
@@ -126,7 +135,7 @@ describe("SkillProgressCard execution layer (§113 P8+)", () => {
   it("shows a specific message when the decision has no answerable task", async () => {
     fetchDecisionTaskMock.mockRejectedValueOnce(new MockTaskApiError(404, "action_has_no_task"));
 
-    render(<SkillProgressCard skill={skillWithDecision} accessToken="fake-token" />);
+    render(<SkillProgressCard skill={skillWithDecision} accessToken="fake-token" canExecute />);
     fireEvent.click(screen.getByRole("button", { name: "Başla" }));
 
     expect(await screen.findByText(/bir soru çözerek yapılabilecek bir görev değil/)).toBeInTheDocument();

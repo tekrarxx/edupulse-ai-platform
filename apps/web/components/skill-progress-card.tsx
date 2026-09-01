@@ -96,7 +96,23 @@ function TaskRunner({ decisionId, accessToken }: { decisionId: string; accessTok
   );
 }
 
-export function SkillProgressCard({ skill, accessToken }: { skill: SkillProgress; accessToken: string }) {
+export function SkillProgressCard({
+  skill,
+  accessToken,
+  canExecute = false,
+}: {
+  skill: SkillProgress;
+  accessToken: string;
+  // §51/§90: POST /assessment/attempts always attributes the attempt to
+  // the caller, so only the skill's own student can meaningfully click
+  // "Başla" — GET /decisions/{id}/task itself also enforces this
+  // server-side (403), but a viewer who can never succeed (a parent
+  // looking at their child's card) should not be shown a button that
+  // always fails with a misleading "try again later" message. Defaults to
+  // false so a new consumer of this shared component must opt in
+  // explicitly, not silently inherit a button that doesn't work for it.
+  canExecute?: boolean;
+}) {
   const [explanation, setExplanation] = useState<SkillExplanation | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -135,7 +151,7 @@ export function SkillProgressCard({ skill, accessToken }: { skill: SkillProgress
           Önerilen sonraki adım: <span className="text-foreground">{skill.next_action_label}</span>
         </p>
       )}
-      {skill.next_action_decision_id && <TaskRunner decisionId={skill.next_action_decision_id} accessToken={accessToken} />}
+      {canExecute && skill.next_action_decision_id && <TaskRunner decisionId={skill.next_action_decision_id} accessToken={accessToken} />}
       {skill.pending_retention_checkpoints > 0 && (
         <p className="text-sm text-muted">
           {skill.pending_retention_checkpoints} hatırlama kontrolü bekleniyor.

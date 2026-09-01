@@ -79,6 +79,33 @@ describe("ParentDashboardPage", () => {
     expect(screen.queryAllByRole("button", { name: "Ayşe" })).toHaveLength(0);
   });
 
+  it("never shows the execution-layer Başla button on a child's card (§51: a parent cannot execute on a child's behalf)", async () => {
+    fetchMyChildrenMock.mockResolvedValueOnce([{ student_user_id: "c1", display_name: "Ayşe", consent_on_file: true }]);
+    fetchStudentDashboardMock.mockResolvedValueOnce({
+      student_user_id: "c1",
+      skills: [
+        {
+          skill_id: "s1",
+          skill_name: "Newton'un İkinci Yasası",
+          mastery_label: "Biraz daha çalış",
+          is_weak: true,
+          is_strong: false,
+          next_action_label: "Daha kolay bir görevle devam et",
+          next_action_decision_id: "d1",
+          pending_retention_checkpoints: 0,
+        },
+      ],
+      weak_skill_count: 1,
+      strong_skill_count: 0,
+      upcoming_retention_count: 0,
+    });
+
+    render(<ParentDashboardPage />);
+
+    expect(await screen.findByText("Newton'un İkinci Yasası")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Başla" })).not.toBeInTheDocument();
+  });
+
   it("shows a picker for multiple children and switches on click", async () => {
     fetchMyChildrenMock.mockResolvedValueOnce([
       { student_user_id: "c1", display_name: "Ayşe", consent_on_file: true },

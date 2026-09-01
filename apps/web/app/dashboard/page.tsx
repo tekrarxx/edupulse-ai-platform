@@ -71,7 +71,7 @@ export default function DashboardPage() {
             <div className="flex flex-col gap-3">
               {accessToken &&
                 dashboard.skills.map((skill) => (
-                  <SkillProgressCard key={skill.skill_id} skill={skill} accessToken={accessToken} />
+                  <SkillProgressCard key={skill.skill_id} skill={skill} accessToken={accessToken} canExecute />
                 ))}
             </div>
           )}
