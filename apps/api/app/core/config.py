@@ -30,6 +30,20 @@ class Settings(BaseSettings):
     ollama_model: str = "llama3.2:1b"
     ai_request_timeout_seconds: float = 30.0
 
+    # §43/§140 model router: an optional second provider, tried as a
+    # fallback after Ollama (never instead of it — §44 keeps local-first
+    # the default). All three must be set together or the router stays
+    # single-provider (Ollama only); this is deliberately unconfigured out
+    # of the box (§136 — no external AI call happens without an explicit
+    # decision to configure one). Any OpenAI Chat-Completions-API-compatible
+    # endpoint works here (OpenAI itself, Groq, Together, OpenRouter,
+    # DeepSeek, a self-hosted vLLM/LM Studio instance, ...) — see
+    # app/ai/providers/openai_compatible.py.
+    secondary_ai_provider_base_url: str | None = None
+    secondary_ai_provider_api_key: str | None = None
+    secondary_ai_provider_model: str | None = None
+    secondary_ai_provider_name: str = "openai_compatible"
+
     # §9-11 local-first: a local Mailpit SMTP catcher by default (see
     # docker-compose.yml), never a real provider/API key out of the box.
     # Swapping to a real transactional-email provider for production is a

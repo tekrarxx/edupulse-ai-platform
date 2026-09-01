@@ -17,6 +17,8 @@ from sqlalchemy.orm import Session
 from app.ai.gateway import AIGateway
 from app.ai.providers.base import AIProvider
 from app.ai.providers.ollama import OllamaProvider
+from app.ai.providers.openai_compatible import OpenAICompatibleProvider
+from app.ai.router import ModelRouter
 from app.core.config import get_settings
 from app.core.security import decode_access_token
 from app.db.session import get_db
@@ -62,13 +64,30 @@ def get_ai_provider() -> AIProvider:
     """The AI Gateway's DI seam (ADR-015 §3): tests override this dependency
     with `app.dependency_overrides[get_ai_provider] = lambda: FakeProvider(...)`
     so `AIGateway`'s own validation/safety/accounting logic is exercised
-    end-to-end against a fake transport, never a live network call."""
+    end-to-end against a fake transport, never a live network call.
+
+    §140/ADR-022: Ollama is always the primary provider (§44 local-first).
+    A second provider is added as a fallback only when all three of its
+    settings are configured — never partially, and never in place of
+    Ollama."""
     settings = get_settings()
-    return OllamaProvider(
+    primary: AIProvider = OllamaProvider(
         base_url=settings.ollama_base_url,
         model=settings.ollama_model,
         timeout_seconds=settings.ai_request_timeout_seconds,
     )
+
+    if settings.secondary_ai_provider_base_url and settings.secondary_ai_provider_api_key and settings.secondary_ai_provider_model:
+        secondary = OpenAICompatibleProvider(
+            base_url=settings.secondary_ai_provider_base_url,
+            api_key=settings.secondary_ai_provider_api_key,
+            model=settings.secondary_ai_provider_model,
+            timeout_seconds=settings.ai_request_timeout_seconds,
+            provider_name=settings.secondary_ai_provider_name,
+        )
+        return ModelRouter(providers=[primary, secondary])
+
+    return primary
 
 
 def get_ai_gateway(provider: AIProvider = Depends(get_ai_provider), db: Session = Depends(get_db)) -> AIGateway:
