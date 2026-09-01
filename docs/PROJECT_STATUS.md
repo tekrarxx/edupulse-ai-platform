@@ -16,17 +16,19 @@ not the SQLite fallback), same commands `make test`/`make test-api`/
 
 | Check | Result |
 |---|---|
-| `pytest` (`apps/api`) | **258 passed**, 0 failed |
+| `pytest` (`apps/api`) | **263 passed**, 0 failed |
 | `ruff check .` (`apps/api`) | All checks passed |
-| `npm test -- --watchAll=false` (`apps/web`) | **40 passed**, 0 failed, 12 suites |
+| `npm test -- --watchAll=false` (`apps/web`) | **42 passed**, 0 failed, 12 suites |
 | `npx tsc --noEmit` (`apps/web`) | Clean, no errors |
 
-(Updated after this session's execution-layer slice, ADR-021, and the
-self-service plan-switching slice — see ROADMAP.md P1/P2.)
+(Updated after this session's execution-layer slice (ADR-021), the
+self-service plan-switching slice, the AI Gateway `key_points`
+normalization fix (ADR-015 addendum), and a client-side permission-UX fix
+found by live-browsing the parent dashboard — see ROADMAP.md P1/P2.)
 
 Backend test layout: `apps/api/tests/{unit,integration,api,security,e2e,load}/`,
-32 test files, ~232 `def test_...` functions. Frontend: `apps/web/__tests__/`,
-11 files.
+34 test files, ~250 `def test_...` functions. Frontend: `apps/web/__tests__/`,
+12 files.
 
 ## What's implemented, by domain
 
