@@ -54,13 +54,17 @@ speculative new feature list.
   different authorization behavior than the first. Do not build this
   speculatively before that trigger fires (§125/§141) — but track it as
   the literal next thing to revisit once a second real tenant exists.
-- **Execution layer** — surfacing the PDE's decided next action as an
-  actual in-app activity a student clicks into, not just a dashboard
-  label. §113 always placed this at P8+; it is the largest remaining gap
-  between "the engine decides correctly" (proven) and "a student
-  experiences the decision" (not yet built). This is genuinely a new
-  vertical slice, not a deferred-and-forgotten item — size it as its own
-  §122 pre-implementation report when picked up, likely L effort.
+- ~~**Execution layer**~~ — **CLOSED (this session, ADR-021)**: `GET
+  /decisions/{id}/task` resolves a Decision's `selected_action` to a real
+  `Question` (never fabricated, §105); the student dashboard's "Başla"
+  button lets a student answer it through the existing
+  `POST /assessment/attempts`. 6 of 12 `CandidateActionType`s are
+  task-resolvable by design (ADR-021); the other 6 are deliberately not
+  question-answering activities. **Residual scope**: no execution UI yet
+  for the 6 non-question actions (still label-only, honest given no
+  content system backs them), and `NoQuestionAvailable` is a real,
+  surfaced content gap for skills without questions in the resolved
+  facet — not a code bug, see ADR-021 "What Is Explicitly Not Built."
 
 ### P2 — important, ADR-016 has already named the trigger
 - **A third gated `EntitlementKey`** — the same narrow pattern that

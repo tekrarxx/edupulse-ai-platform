@@ -9,8 +9,8 @@ from app.models.decision import Decision
 from app.models.relationship import ParentStudentLink
 from app.models.tenant import Tenant
 from app.models.user import Role, User
-from app.schemas.decision import DecisionOut
-from app.services import decision_engine_service
+from app.schemas.decision import DecisionOut, TaskOut
+from app.services import decision_engine_service, task_service
 
 router = APIRouter(prefix="/decisions")
 
@@ -107,6 +107,31 @@ def get_decision(
     # decision for a student they are already permitted to view (§51, §81).
     _resolve_target_student_id(current_user=current_user, student_id=decision.student_user_id, db=db)
     return DecisionOut.model_validate(decision)
+
+
+@router.get("/{decision_id}/task", response_model=TaskOut)
+def get_decision_task(
+    decision_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+) -> TaskOut:
+    """Execution layer (§113 P8+): the real Question behind this decision's
+    selected_action. Self-only — the student who submits an attempt is
+    always `current_user` (POST /assessment/attempts), so a parent or staff
+    caller previewing on someone else's behalf would be fetching a task
+    they cannot actually execute; kept simple by requiring the caller to be
+    the decision's own student."""
+    decision = _get_owned_decision(db, tenant_id=current_user.tenant_id, decision_id=decision_id)
+    if current_user.id != decision.student_user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="only_the_decisions_student_can_execute_it")
+
+    try:
+        task = task_service.resolve_task_for_decision(db, tenant_id=current_user.tenant_id, decision_id=decision_id)
+    except task_service.DecisionNotExecutable:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="decision_not_executable")
+    except task_service.ActionHasNoTask:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="action_has_no_task")
+    except task_service.NoQuestionAvailable:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no_question_available")
+    return TaskOut.model_validate(task)
 
 
 @router.get("", response_model=list[DecisionOut])

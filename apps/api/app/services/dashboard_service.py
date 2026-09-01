@@ -56,6 +56,10 @@ class SkillProgress:
     is_weak: bool
     is_strong: bool
     next_action_label: str | None
+    # None whenever next_action_label is None (no decision yet). Lets the
+    # frontend fetch GET /decisions/{id}/task (the execution layer, §113
+    # P8+) instead of the label being inert text with nothing to click.
+    next_action_decision_id: str | None
     pending_retention_checkpoints: int
 
 
@@ -142,6 +146,7 @@ def get_student_dashboard(db: Session, *, tenant_id: str, student_user_id: str) 
                 is_weak=is_weak,
                 is_strong=is_strong,
                 next_action_label=action_label,
+                next_action_decision_id=decision.id if decision is not None else None,
                 pending_retention_checkpoints=pending_count_by_skill.get(skill_id, 0),
             )
         )

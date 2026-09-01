@@ -12,6 +12,7 @@ class SkillProgressOut(BaseModel):
     is_weak: bool
     is_strong: bool
     next_action_label: str | None
+    next_action_decision_id: str | None
     pending_retention_checkpoints: int
 
 

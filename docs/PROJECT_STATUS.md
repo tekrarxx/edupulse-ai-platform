@@ -16,10 +16,12 @@ not the SQLite fallback), same commands `make test`/`make test-api`/
 
 | Check | Result |
 |---|---|
-| `pytest` (`apps/api`) | **236 passed**, 0 failed |
+| `pytest` (`apps/api`) | **247 passed**, 0 failed |
 | `ruff check .` (`apps/api`) | All checks passed |
-| `npm test -- --watchAll=false` (`apps/web`) | **34 passed**, 0 failed, 11 suites |
+| `npm test -- --watchAll=false` (`apps/web`) | **37 passed**, 0 failed, 11 suites |
 | `npx tsc --noEmit` (`apps/web`) | Clean, no errors |
+
+(Updated after this session's execution-layer slice, ADR-021 — see ROADMAP.md P1.)
 
 Backend test layout: `apps/api/tests/{unit,integration,api,security,e2e,load}/`,
 32 test files, ~232 `def test_...` functions. Frontend: `apps/web/__tests__/`,
@@ -105,7 +107,7 @@ already closed:
 
 | Item | Status | Why deferred / trigger to revisit |
 |---|---|---|
-| Execution layer (serving the PDE's decided task as actual content to a student) | Still deferred | §113 places content delivery at P8+; dashboards show *what* was decided, not an in-app activity player. Safe per original MVP-GATE reasoning — §115's loop only requires the decision to exist and be explainable. |
+| ~~Execution layer~~ — **CLOSED (this session, ADR-021)**: `GET /decisions/{id}/task` (`app/services/task_service.py`) resolves a Decision to a real Question; the student dashboard's "Başla" button submits it through the existing `POST /assessment/attempts`. Residual: 6/12 action types are deliberately not question-answering (still label-only), and skills with no question in the resolved facet get an honest `no_question_available`, not a fabricated task. | — | See ADR-021. |
 | Role/tenant-education-policy authorization | Deliberate deferral (ADR-013 addendum 2) | No second real tenant has asked for different policy behavior yet. |
 | Billing (`Subscription`/`Invoice`/`Payment`) | Genuinely unbuilt | ADR-016: §116 doesn't require it for MVP; building it before a paying customer exists risks unused plumbing (§125/§141). Trigger: real money needs to move. |
 | Self-service plan upgrade | Unbuilt | Plan assignment is an admin/script operation today (`scripts/seed_school_plan.py`), matching how `ParentStudentLink` and admin-enrollment work. |

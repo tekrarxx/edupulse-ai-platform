@@ -59,6 +59,7 @@ def get_student_dashboard(
                 "is_weak": s.is_weak,
                 "is_strong": s.is_strong,
                 "next_action_label": s.next_action_label,
+                "next_action_decision_id": s.next_action_decision_id,
                 "pending_retention_checkpoints": s.pending_retention_checkpoints,
             }
             for s in dashboard.skills

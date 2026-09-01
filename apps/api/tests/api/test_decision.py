@@ -334,3 +334,92 @@ def test_adult_student_with_recorded_date_of_birth_is_not_gated(client: TestClie
     response = client.post("/decisions/next-action", params={"skill_id": skill_id}, headers=_headers(student_token))
     assert response.status_code == 201
     assert response.json()["authorization_result"] == "allowed"
+
+
+# --- GET /decisions/{id}/task: execution layer (§113 P8+) ---
+
+
+def test_task_returns_no_question_available_for_a_skill_with_no_questions(
+    client: TestClient, db: Session, skill_id: str
+) -> None:
+    """insufficient_evidence_action is task-resolvable in principle
+    (APPLICATION facet), but this skill_id fixture never creates a
+    Question — a genuine, honest content gap, not a fabricated task (§105)."""
+    _, student_token = _seed_user(db, role=Role.STUDENT)
+    decision = client.post(
+        "/decisions/next-action", params={"skill_id": skill_id}, headers=_headers(student_token)
+    ).json()
+    assert decision["selected_action"] == "insufficient_evidence_action"
+
+    response = client.get(f"/decisions/{decision['id']}/task", headers=_headers(student_token))
+    assert response.status_code == 404
+    assert response.json()["detail"] == "no_question_available"
+
+
+def test_task_returns_a_real_question_when_one_exists(client: TestClient, db: Session, skill_id: str, admin: tuple[User, str]) -> None:
+    _, admin_token = admin
+    _, student_token = _seed_user(db, role=Role.STUDENT)
+    client.post(
+        "/assessment/questions",
+        json={"skill_id": skill_id, "facet_type": "application", "prompt": "F = m*a, m=2kg, a=3m/s^2, F=?", "correct_answer": "6"},
+        headers=_headers(admin_token),
+    )
+
+    decision = client.post(
+        "/decisions/next-action", params={"skill_id": skill_id}, headers=_headers(student_token)
+    ).json()
+    assert decision["selected_action"] == "insufficient_evidence_action"
+
+    response = client.get(f"/decisions/{decision['id']}/task", headers=_headers(student_token))
+    assert response.status_code == 200
+    body = response.json()
+    assert body["decision_id"] == decision["id"]
+    assert body["question_id"]
+    assert body["prompt"] == "F = m*a, m=2kg, a=3m/s^2, F=?"
+    assert "correct_answer" not in body  # §26/§90: never leak the answer key to the student
+
+
+def test_task_rejected_for_a_decision_that_belongs_to_another_student(
+    client: TestClient, db: Session, skill_id: str, admin: tuple[User, str]
+) -> None:
+    _, admin_token = admin
+    tenant = Tenant(name="Shared Task Tenant", tenant_type=TenantType.SCHOOL)
+    db.add(tenant)
+    db.flush()
+    db.commit()
+    _, student_a_token = _seed_user(db, role=Role.STUDENT, tenant=tenant)
+    _, student_b_token = _seed_user(db, role=Role.STUDENT, tenant=tenant)
+    client.post(
+        "/assessment/questions",
+        json={"skill_id": skill_id, "facet_type": "application", "prompt": "P", "correct_answer": "6"},
+        headers=_headers(admin_token),
+    )
+    decision = client.post(
+        "/decisions/next-action", params={"skill_id": skill_id}, headers=_headers(student_a_token)
+    ).json()
+
+    response = client.get(f"/decisions/{decision['id']}/task", headers=_headers(student_b_token))
+    assert response.status_code == 403
+    assert response.json()["detail"] == "only_the_decisions_student_can_execute_it"
+
+
+def test_task_rejected_for_an_escalated_decision(client: TestClient, db: Session, skill_id: str) -> None:
+    """§37: a decision that was not ALLOWED must not let the student
+    self-execute around the authorization gate — reuses the same minor/
+    no-consent scenario that produces a real ESCALATED decision."""
+    from datetime import date
+
+    tenant = Tenant(name="Minor Tenant Task", tenant_type=TenantType.SCHOOL)
+    db.add(tenant)
+    db.flush()
+    db.commit()
+    student, student_token = _seed_user(db, role=Role.STUDENT, tenant=tenant)
+    student.date_of_birth = date(2015, 1, 1)
+    db.commit()
+
+    decision = client.post("/decisions/next-action", params={"skill_id": skill_id}, headers=_headers(student_token)).json()
+    assert decision["authorization_result"] == "escalated"
+
+    response = client.get(f"/decisions/{decision['id']}/task", headers=_headers(student_token))
+    assert response.status_code == 409
+    assert response.json()["detail"] == "decision_not_executable"

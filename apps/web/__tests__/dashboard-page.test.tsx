@@ -88,6 +88,7 @@ describe("DashboardPage", () => {
           is_weak: false,
           is_strong: true,
           next_action_label: "Bildiğini farklı bir bağlamda uygula",
+          next_action_decision_id: "d1",
           pending_retention_checkpoints: 1,
         },
       ],

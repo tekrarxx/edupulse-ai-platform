@@ -9,6 +9,7 @@ export type SkillProgress = {
   is_weak: boolean;
   is_strong: boolean;
   next_action_label: string | null;
+  next_action_decision_id: string | null;
   pending_retention_checkpoints: number;
 };
 
